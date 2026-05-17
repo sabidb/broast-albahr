@@ -1290,5 +1290,35 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr}) {
       console.log("Firebase ready ✅");
     } catch(e) { console.log("Firebase unavailable:", e.message); }
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qz-tray/2.2.4/qz-tray.js"></script>
+  <script>
+function connectQZ() {
+  qz.websocket.connect()
+    .then(() => console.log("QZ CONNECTED"))
+    .catch(err => console.error("QZ ERROR", err));
+}
+
+window.onload = function () {
+  if (window.qz) {
+    connectQZ();
+  } else {
+    console.log("QZ not loaded");
+  }
+};
+
+function printReceipt(text) {
+  const config = qz.configs.create("POS-80");
+
+  const data = [{
+    type: "raw",
+    format: "plain",
+    data: text
+  }];
+
+  qz.print(config, data)
+    .then(() => console.log("PRINTED"))
+    .catch(err => console.error(err));
+}
+</script>
 </body>
 </html>
