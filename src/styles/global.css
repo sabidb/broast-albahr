@@ -18,7 +18,7 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  [dir='rtl'] { font-family: 'Changa', system-ui, sans-serif; font-weight: 600; }
+  [dir='rtl'] { font-family: 'Changa', system-ui, sans-serif; font-weight: 400; }
   /* poster-impact headings */
   h1, h2, h3, h4 {
     font-family: 'Anton', system-ui, sans-serif;
@@ -29,9 +29,9 @@
   }
   [dir='rtl'] h1, [dir='rtl'] h2, [dir='rtl'] h3, [dir='rtl'] h4 {
     font-family: 'Changa', system-ui, sans-serif;
-    font-weight: 800;
+    font-weight: 600;
     letter-spacing: 0;
-    line-height: 1.2;
+    line-height: 1.3;
     text-transform: none;
   }
   ::selection { background: rgba(225, 6, 0, .16); color: #1E1206; }
@@ -118,3 +118,12 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Arabic (RTL) reads at a normal weight — soften Tailwind's bold utilities.
+   These are unlayered so they win over @tailwind utilities. LTR is untouched. */
+[dir='rtl'] .font-black,
+[dir='rtl'] .font-extrabold { font-weight: 600; }
+[dir='rtl'] .font-bold { font-weight: 600; }
+[dir='rtl'] .font-semibold { font-weight: 500; }
+[dir='rtl'] .font-medium { font-weight: 400; }
+
