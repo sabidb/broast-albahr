@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import VariantSheet from './VariantSheet';
 import MenuCard from './MenuCard';
 import { stagger } from './motion';
@@ -38,6 +38,26 @@ export default function MenuStep({
   const [active, setActive] = useState(cats[0]);
   const [variantItem, setVariantItem] = useState<MenuItem | null>(null);
 
+  // parallax 3D hero
+  const heroRef = useRef<HTMLDivElement>(null);
+  const hx = useMotionValue(0);
+  const hy = useMotionValue(0);
+  const hSpring = { stiffness: 150, damping: 18 };
+  const heroRotX = useSpring(useTransform(hy, [-0.5, 0.5], [8, -8]), hSpring);
+  const heroRotY = useSpring(useTransform(hx, [-0.5, 0.5], [-10, 10]), hSpring);
+  const chickenX = useSpring(useTransform(hx, [-0.5, 0.5], [-16, 16]), hSpring);
+  const chickenY = useSpring(useTransform(hy, [-0.5, 0.5], [-10, 10]), hSpring);
+  const onHeroMove = (e: React.PointerEvent) => {
+    const r = heroRef.current?.getBoundingClientRect();
+    if (!r) return;
+    hx.set((e.clientX - r.left) / r.width - 0.5);
+    hy.set((e.clientY - r.top) / r.height - 0.5);
+  };
+  const heroReset = () => {
+    hx.set(0);
+    hy.set(0);
+  };
+
   const add = (i: MenuItem) =>
     setCart((prev) => ({ ...prev, [i.id]: { ...i, qty: (prev[i.id]?.qty || 0) + 1 } }));
   const remove = (id: string | number) =>
@@ -70,23 +90,33 @@ export default function MenuStep({
         </button>
       </div>
 
-      {/* hero card */}
-      <div className="px-4 pt-5">
+      {/* hero card — parallax 3D */}
+      <div className="px-4 pt-5" style={{ perspective: 900 }}>
         <motion.div
+          ref={heroRef}
+          onPointerMove={onHeroMove}
+          onPointerLeave={heroReset}
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
+          style={{
+            rotateX: heroRotX,
+            rotateY: heroRotY,
+            transformStyle: 'preserve-3d',
+            background: 'linear-gradient(135deg,#E10600 0%,#FF5A1F 55%,#F5A623 130%)',
+          }}
           className="relative overflow-hidden rounded-3xl px-6 py-7 text-center shadow-red"
-          style={{ background: 'linear-gradient(135deg,#E10600 0%,#FF5A1F 55%,#F5A623 130%)' }}
         >
           <div
             className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full"
             style={{ background: 'radial-gradient(circle,rgba(255,255,255,0.28),transparent 65%)' }}
           />
-          <div className="mb-1 animate-floaty text-[44px]">🍗</div>
-          <h2 className="text-2xl font-black text-white drop-shadow">
+          <motion.div className="mb-1 text-[44px]" style={{ x: chickenX, y: chickenY, transform: 'translateZ(40px)' }}>
+            🍗
+          </motion.div>
+          <h2 className="text-2xl font-black text-white drop-shadow" style={{ transform: 'translateZ(24px)' }}>
             {isAr ? 'اختر طلبك' : 'Choose Your Order'}
           </h2>
-          <p className="mt-1 text-[13px] font-bold text-white/90">
+          <p className="mt-1 text-[13px] font-bold text-white/90" style={{ transform: 'translateZ(14px)' }}>
             {isAr ? 'مكة المكرمة - الكعكية · 0500959394' : "Makkah Al-Ka'kiyah · 0500959394"}
           </p>
         </motion.div>

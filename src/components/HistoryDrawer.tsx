@@ -2,19 +2,27 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { drawer } from './motion';
 import AiChat from './AiChat';
+import StreakPanel from './StreakPanel';
 import { money, formatDate } from '../lib/utils';
+import type { StreakState } from '../lib/streak';
 import type { Order } from './Invoice';
+
+type Tab = 'orders' | 'streak' | 'chat';
 
 export default function HistoryDrawer({
   orders,
+  streak,
+  initialTab = 'orders',
   onClose,
   isAr,
 }: {
   orders: Order[];
+  streak: StreakState;
+  initialTab?: Tab;
   onClose: () => void;
   isAr: boolean;
 }) {
-  const [tab, setTab] = useState<'orders' | 'chat'>('orders');
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   return (
     <motion.div
@@ -43,20 +51,26 @@ export default function HistoryDrawer({
         </div>
 
         <div className="mb-4 flex gap-1 rounded-2xl bg-white p-1 shadow-soft">
-          {(['orders', 'chat'] as const).map((t) => (
+          {(['orders', 'streak', 'chat'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className="relative flex-1 rounded-xl py-2.5 text-[13px] font-black"
+              className="relative flex-1 rounded-xl py-2.5 text-[12px] font-black"
               style={{ color: tab === t ? '#fff' : '#8C7A64' }}
             >
               {tab === t && <motion.div layoutId="tab-pill" className="absolute inset-0 -z-10 rounded-xl bg-brand-red" />}
-              {t === 'orders' ? (isAr ? 'طلباتي' : 'Orders') : isAr ? 'مساعد' : 'AI Chat'}
+              {t === 'orders'
+                ? isAr ? 'طلباتي' : 'Orders'
+                : t === 'streak'
+                  ? isAr ? '🔥 سلسلة' : '🔥 Streak'
+                  : isAr ? 'مساعد' : 'AI Chat'}
             </button>
           ))}
         </div>
 
-        {tab === 'orders' ? (
+        {tab === 'streak' ? (
+          <StreakPanel state={streak} isAr={isAr} />
+        ) : tab === 'orders' ? (
           <div className="flex-1 overflow-y-auto">
             {orders.length === 0 ? (
               <div className="mt-16 text-center font-bold text-brand-muted">

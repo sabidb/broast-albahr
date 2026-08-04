@@ -8,10 +8,13 @@ import CheckoutStep from './CheckoutStep';
 import OrderSuccess from './OrderSuccess';
 import HistoryDrawer from './HistoryDrawer';
 import AdminPanel, { AdminLogin } from './AdminPanel';
+import StreakBadge from './StreakBadge';
+import StreakModal from './StreakModal';
 import { pageVariants } from './motion';
 import { DEFAULT_MENU, type Menu } from '../lib/data';
 import { loyaltyPointsFor } from '../lib/utils';
 import { FB } from '../lib/fb';
+import { tickStreak, loadStreak, type StreakState, type StreakTick } from '../lib/streak';
 import type { Order } from './Invoice';
 
 type User = { name: string; phone: string };
@@ -28,9 +31,19 @@ export default function App() {
   const [view, setView] = useState<'app' | 'admin'>('app');
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'orders' | 'chat' | 'streak'>('orders');
   const [restaurantClosed, setRestaurantClosed] = useState(false);
+  const [streak, setStreak] = useState<StreakState>(loadStreak);
+  const [streakTick, setStreakTick] = useState<StreakTick | null>(null);
   const orderCounter = useRef(1000);
   const isAr = lang === 'ar';
+
+  // advance the daily streak on first open
+  useEffect(() => {
+    const t = tickStreak();
+    setStreak(t.state);
+    if (t.changed) setStreakTick(t);
+  }, []);
 
   useEffect(() => {
     try {
@@ -135,6 +148,13 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <StreakBadge
+              count={streak.count}
+              onClick={() => {
+                setHistoryTab('streak');
+                setShowHistory(true);
+              }}
+            />
             <button
               onClick={() => setShowAdminLogin(true)}
               className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg shadow-soft"
@@ -142,7 +162,10 @@ export default function App() {
               ⚙️
             </button>
             <button
-              onClick={() => setShowHistory(true)}
+              onClick={() => {
+                setHistoryTab('orders');
+                setShowHistory(true);
+              }}
               className="relative flex h-10 w-10 flex-col items-center justify-center gap-[3px] rounded-2xl bg-white shadow-soft"
             >
               {[0, 1, 2].map((i) => (
@@ -204,7 +227,19 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showHistory && <HistoryDrawer orders={orders} isAr={isAr} onClose={() => setShowHistory(false)} />}
+        {showHistory && (
+          <HistoryDrawer
+            orders={orders}
+            streak={streak}
+            initialTab={historyTab}
+            isAr={isAr}
+            onClose={() => setShowHistory(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {streakTick && <StreakModal tick={streakTick} isAr={isAr} onClose={() => setStreakTick(null)} />}
       </AnimatePresence>
     </div>
   );
