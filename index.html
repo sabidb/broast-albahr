@@ -1190,7 +1190,7 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr}) {
   const vat = Math.round(vatBase*15/115*100)/100;
   const total = Math.round(vatBase*100)/100;
 
-  const placeOrder = () => {
+  const placeOrder = async () => {
     if(!branch){alert(isAr?"اختر الفرع":"Please select a branch");return;}
     if(orderType==="delivery"&&locStatus!=="found"){alert(isAr?"شارك موقعك":"Share your location first");return;}
     const brObj=window.BRANCHES.find(b=>b.id===branch)||window.BRANCHES[0];
@@ -1205,7 +1205,10 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr}) {
     if(orderType==="delivery"&&deliveryFee)lines.push(`Delivery Fee: SR ${deliveryFee.toFixed(2)}`);
     lines.push(`VAT 15%: SR ${vat.toFixed(2)}`,`TOTAL: SR ${total.toFixed(2)}`);
     window.open(`https://wa.me/${brObj.whatsapp}?text=${encodeURIComponent(lines.join(sep))}`,"_blank");
-    if(window.FB)window.FB.saveOrder({branch,orderType,items:cartItems,subtotal,platformFee:pFee,deliveryFee:dFee,vat,total,locationLink:locLink,paymentMethod:payMethod,note,userName:user.name,userPhone:user.phone,date:new Date().toISOString(),orderNo:String(Date.now()).slice(-4)});
+    if(window.FB){
+      var saved=await window.FB.saveOrder({branch,orderType,items:cartItems,subtotal,platformFee:pFee,deliveryFee:dFee,vat,total,locationLink:locLink,paymentMethod:payMethod,note,userName:user.name,userPhone:user.phone,date:new Date().toISOString(),orderNo:String(Date.now()).slice(-4)});
+      if(!saved)alert(isAr?"⚠️ تم إرسال طلبك عبر واتساب، لكن لم يتم تسجيله في النظام. يرجى تأكيد الطلب مع الفرع.":"⚠️ Your order was sent via WhatsApp, but could not be recorded in our system. Please confirm the order with the branch.");
+    }
     onOrderPlaced({branch,orderType,items:cartItems,subtotal,platformFee:pFee,deliveryFee:dFee,vat,total,locationLink:locLink,paymentMethod:payMethod,note});
   };
 
@@ -1331,7 +1334,7 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr}) {
         saveMenu: async function(m){ try{ await setDoc(doc(_db,"settings","menu"),{menu:m,updatedAt:serverTimestamp()}); }catch(e){} },
         getSettings: async function(){ try{ var s=await getDoc(doc(_db,"settings","restaurant")); return s.exists()?s.data():{isOpen:true}; }catch(e){ return {isOpen:true}; } },
         saveSettings: async function(d){ try{ await setDoc(doc(_db,"settings","restaurant"),Object.assign({},d,{updatedAt:serverTimestamp()})); }catch(e){} },
-        saveOrder: async function(o){ try{ await addDoc(collection(_db,"orders"),Object.assign({},o,{createdAt:serverTimestamp(),status:"new"})); }catch(e){} },
+        saveOrder: async function(o){ try{ var ref=await addDoc(collection(_db,"orders"),Object.assign({},o,{createdAt:serverTimestamp(),status:"new"})); return ref&&ref.id?ref.id:true; }catch(e){ console.error("saveOrder failed:",e); return false; } },
         updateOrderStatus: async function(id,s){ try{ await updateDoc(doc(_db,"orders",id),{status:s,updatedAt:serverTimestamp()}); }catch(e){} },
         saveCustomer: async function(d){ try{ var data=Object.assign({},d,{lastSeen:serverTimestamp()}); if(d.loyaltyPoints!==undefined){ data.loyaltyPoints=d.loyaltyPoints; } await setDoc(doc(_db,"customers",d.phone),data,{merge:true}); }catch(e){} },
         getCustomerOrders: async function(ph){ try{ var snap=await getDocs(collection(_db,"orders")); return snap.docs.map(function(d){ return Object.assign({fbId:d.id},d.data()); }).filter(function(o){ return o.userPhone===ph; }).sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); }); }catch(e){ return []; } },
