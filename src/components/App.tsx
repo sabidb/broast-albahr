@@ -123,8 +123,8 @@ export default function App() {
               🍗
             </div>
             <div className="leading-none">
-              <div className="text-[18px] font-black tracking-tight text-brand-ink">BROAST ALBAHR</div>
-              <div className="mt-0.5 font-arabic text-[13px] font-extrabold text-brand-red">بروست البحر</div>
+              <div className="font-display text-[15px] font-extrabold tracking-tight text-brand-ink">BROAST ALBAHR</div>
+              <div className="mt-1 font-arabic text-[13px] font-extrabold text-brand-red">بروست البحر</div>
             </div>
           </div>
           <div className="flex items-center gap-2">

@@ -40,7 +40,7 @@ export default function Splash({ onDone }: { onDone: () => void }) {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25, duration: 0.6 }}
-        className="heading-shine relative z-10 mt-7 text-[30px] font-black tracking-tight"
+        className="heading-shine relative z-10 mt-7 font-display text-[27px] font-extrabold tracking-tight"
       >
         BROAST ALBAHR
       </motion.div>

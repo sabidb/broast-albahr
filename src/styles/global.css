@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800;900&family=Syne:wght@500;600;700;800&family=Cairo:wght@500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Baloo+Bhaijaan+2:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,15 +12,15 @@
     min-height: 100vh;
     background: #FFF6EA;
     color: #1E1206;
-    font-family: 'Syne', system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
     font-weight: 600; /* bold-leaning base */
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  [dir='rtl'] { font-family: 'Cairo', system-ui, sans-serif; }
-  h1, h2, h3, h4 { font-family: 'Montserrat', system-ui, sans-serif; font-weight: 900; letter-spacing: -0.01em; }
-  [dir='rtl'] h1, [dir='rtl'] h2, [dir='rtl'] h3, [dir='rtl'] h4 { font-family: 'Cairo', system-ui, sans-serif; }
+  [dir='rtl'] { font-family: 'Baloo Bhaijaan 2', system-ui, sans-serif; }
+  h1, h2, h3, h4 { font-family: 'Unbounded', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.02em; }
+  [dir='rtl'] h1, [dir='rtl'] h2, [dir='rtl'] h3, [dir='rtl'] h4 { font-family: 'Baloo Bhaijaan 2', system-ui, sans-serif; font-weight: 800; letter-spacing: 0; }
   ::selection { background: rgba(225, 6, 0, .16); color: #1E1206; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: #FBEBD7; }

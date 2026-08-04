@@ -68,10 +68,10 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-[380px] overflow-y-auto rounded-2xl bg-white font-display text-black"
+        className="max-h-[90vh] w-full max-w-[380px] overflow-y-auto rounded-2xl bg-white font-sans text-black"
       >
         <div className="rounded-t-2xl bg-brand-red px-5 pb-4 pt-5 text-center">
-          <div className="text-xl font-black tracking-wide text-white">BROAST ALBAHR</div>
+          <div className="font-display text-lg font-extrabold tracking-tight text-white">BROAST ALBAHR</div>
           <div className="mt-0.5 font-arabic text-[13px] text-white/90">بروست البحر</div>
           <div className="mt-1 text-[11px] text-white/75">{order.branchObj.nameEn}</div>
         </div>
