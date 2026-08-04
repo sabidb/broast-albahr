@@ -75,16 +75,29 @@ export default function AccountScreen({
           [isAr ? 'السلسلة' : 'Streak', streak.count, '🔥'],
           [isAr ? 'مدى الحياة' : 'Lifetime', loyalty.lifetime, '⭐'],
         ].map(([l, v, ic], i) => (
-          <div key={i} className="rounded-3xl bg-white p-4 text-center shadow-soft ring-1 ring-brand-line">
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 18, scale: 0.95 }}
+            whileInView={{ opacity: 1, y: 0, scale: 1 }}
+            viewport={{ once: true, amount: 0.4 }}
+            transition={{ delay: i * 0.06, duration: 0.4, ease: [0.22, 0.9, 0.28, 1] }}
+            className="rounded-3xl bg-white p-4 text-center shadow-soft ring-1 ring-brand-line"
+          >
             <div className="text-xl">{ic as string}</div>
             <div className="mt-1 text-[22px] font-black text-brand-red">{v as number}</div>
             <div className="text-[10px] font-bold text-brand-muted">{l as string}</div>
-          </div>
+          </motion.div>
         ))}
       </div>
 
       {/* settings */}
-      <div className="mt-4 overflow-hidden rounded-3xl bg-white shadow-soft ring-1 ring-brand-line">
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.2 }}
+        transition={{ duration: 0.45, ease: [0.22, 0.9, 0.28, 1] }}
+        className="mt-4 overflow-hidden rounded-3xl bg-white shadow-soft ring-1 ring-brand-line"
+      >
         {rows.map((r, i) => (
           <button
             key={i}
@@ -98,7 +111,7 @@ export default function AccountScreen({
             <span className="text-brand-muted">›</span>
           </button>
         ))}
-      </div>
+      </motion.div>
 
       <div className="mt-6 text-center text-[11px] font-bold text-brand-muted">
         Broast Al Bahr · بروست البحر · v2.0

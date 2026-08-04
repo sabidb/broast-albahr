@@ -131,8 +131,8 @@ export default function App() {
   const cartCount = Object.values(cart).reduce((s, i) => s + (i.qty || 0), 0);
   const cartTotal = Object.values(cart).reduce((s, i) => s + i.price * (i.qty || 0), 0);
 
-  // scroll-reactive header
-  const { scrollY } = useScroll();
+  // scroll-reactive header + progress bar
+  const { scrollY, scrollYProgress } = useScroll();
   const headerShadow = useTransform(scrollY, [0, 60], ['0 0 0 rgba(0,0,0,0)', '0 12px 30px rgba(180,60,0,0.14)']);
   const headerBlur = useTransform(scrollY, [0, 60], ['saturate(1) blur(6px)', 'saturate(1.2) blur(16px)']);
 
@@ -167,6 +167,16 @@ export default function App() {
 
   return (
     <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
+      {/* scroll progress bar */}
+      <motion.div
+        className="fixed inset-x-0 top-0 z-[85] h-1"
+        style={{
+          scaleX: scrollYProgress,
+          transformOrigin: isAr ? 'right' : 'left',
+          background: 'linear-gradient(90deg,#E10600,#FF5A1F,#F5A623)',
+        }}
+      />
+
       {/* slim header — elevates on scroll */}
       <motion.header
         className="sticky top-0 z-[80] border-b border-brand-line"

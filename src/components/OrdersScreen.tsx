@@ -33,9 +33,11 @@ export default function OrdersScreen({
           {orders.map((o, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ delay: Math.min(i * 0.05, 0.3), duration: 0.45, ease: [0.22, 0.9, 0.28, 1] }}
+              whileHover={{ y: -3 }}
               className="rounded-3xl bg-white p-4 shadow-soft ring-1 ring-brand-line"
             >
               <div className="flex items-center justify-between">

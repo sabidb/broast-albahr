@@ -131,11 +131,12 @@ export default function RewardsScreen({
           return (
             <motion.div
               key={r.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              whileInView={{ opacity: can ? 1 : 0.7, y: 0, scale: 1 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ delay: i * 0.05, duration: 0.45, ease: [0.22, 0.9, 0.28, 1] }}
+              whileHover={{ y: -4 }}
               className="flex flex-col items-center rounded-3xl bg-white p-4 text-center shadow-soft ring-1 ring-brand-line"
-              style={{ opacity: can ? 1 : 0.7 }}
             >
               <div className="text-[34px]">{r.emoji}</div>
               <div className="mt-1 text-[14px] font-black text-brand-ink">{isAr ? r.titleAr : r.title}</div>
@@ -167,15 +168,19 @@ export default function RewardsScreen({
           const reached = loyalty.lifetime >= t.min;
           const current = tier.name === t.name;
           return (
-            <div
+            <motion.div
               key={t.name}
+              initial={{ opacity: 0, y: 16, scale: 0.9 }}
+              whileInView={{ opacity: reached ? 1 : 0.6, y: 0, scale: 1 }}
+              viewport={{ once: true, amount: 0.5 }}
+              transition={{ delay: TIERS.indexOf(t) * 0.06, type: 'spring', stiffness: 300, damping: 18 }}
               className="flex-1 rounded-2xl border-2 bg-white p-2.5 text-center"
-              style={{ borderColor: current ? t.color : 'rgba(30,18,6,0.08)', opacity: reached ? 1 : 0.6 }}
+              style={{ borderColor: current ? t.color : 'rgba(30,18,6,0.08)' }}
             >
               <div className="text-[22px]">{t.emoji}</div>
               <div className="text-[11px] font-black text-brand-ink">{isAr ? t.nameAr : t.name}</div>
               <div className="text-[9px] font-bold text-brand-muted">{t.min}+</div>
-            </div>
+            </motion.div>
           );
         })}
       </div>
@@ -186,13 +191,20 @@ export default function RewardsScreen({
           <div className="mb-2 mt-6 text-[15px] font-black text-brand-ink">{isAr ? 'النشاط' : 'Activity'}</div>
           <div className="flex flex-col gap-2">
             {loyalty.history.slice(0, 8).map((h, i) => (
-              <div key={i} className="flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 shadow-soft ring-1 ring-brand-line">
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: 18 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, amount: 0.5 }}
+                transition={{ delay: i * 0.04, duration: 0.4 }}
+                className="flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 shadow-soft ring-1 ring-brand-line"
+              >
                 <span className="text-[12px] font-bold text-brand-ink2">{h.reason}</span>
                 <span className={`text-[13px] font-black ${h.delta >= 0 ? 'text-brand-green' : 'text-brand-red'}`}>
                   {h.delta >= 0 ? '+' : ''}
                   {h.delta}
                 </span>
-              </div>
+              </motion.div>
             ))}
           </div>
         </>

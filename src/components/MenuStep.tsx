@@ -134,7 +134,14 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
       {/* list rows */}
       <div className="mb-2 mt-4 text-[16px] font-black text-brand-ink">{q ? (isAr ? 'النتائج' : 'Results') : active}</div>
       <AnimatePresence mode="wait">
-        <motion.div key={q || active} variants={stagger} initial="initial" animate="animate" className="flex flex-col gap-2.5">
+        <motion.div
+          key={q || active}
+          variants={stagger}
+          initial="initial"
+          whileInView="animate"
+          viewport={{ once: true, amount: 0.02 }}
+          className="flex flex-col gap-2.5"
+        >
           {rows.length === 0 && (
             <div className="py-10 text-center font-bold text-brand-muted">{isAr ? 'لا نتائج' : 'No results'}</div>
           )}
@@ -144,6 +151,7 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
               <motion.div
                 key={it.id}
                 variants={itemVar}
+                whileHover={it.available ? { y: -2 } : undefined}
                 whileTap={it.available ? { scale: 0.99 } : undefined}
                 className="flex items-center gap-3 rounded-[24px] bg-white p-3 shadow-soft ring-1 ring-brand-line"
                 style={{ opacity: it.available ? 1 : 0.5 }}

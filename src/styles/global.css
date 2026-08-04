@@ -40,6 +40,12 @@
   ::-webkit-scrollbar-thumb { background: #E1a; background: linear-gradient(#E10600, #B00000); border-radius: 8px; }
   input, textarea, select { font-family: inherit; }
   input::placeholder, textarea::placeholder { color: #B7A895; }
+
+  /* global tap feedback — every button springs on press
+     (Framer's inline transform on motion.button still wins where set) */
+  button, a[role='button'] { transition: transform .14s cubic-bezier(.22, .9, .28, 1), filter .14s ease; }
+  button:active:not(:disabled) { transform: scale(.94); }
+  button:disabled { cursor: not-allowed; }
 }
 
 @layer components {
