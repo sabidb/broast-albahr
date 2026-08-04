@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import Field from './Field';
+import { LOGO_SRC } from '../lib/logo';
 import { generateOTP } from '../lib/utils';
 import { FB } from '../lib/fb';
 
@@ -15,8 +17,8 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState('');
-  const [nameErr, setNameErr] = useState(false);
-  const [phoneErr, setPhoneErr] = useState(false);
+  const [nameErr, setNameErr] = useState('');
+  const [phoneErr, setPhoneErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [demoCode, setDemoCode] = useState('');
   const otpRef = useRef('');
@@ -37,16 +39,16 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
   };
 
   const sendOtp = () => {
-    let valid = true;
+    let ok = true;
     if (!name.trim()) {
-      setNameErr(true);
-      valid = false;
+      setNameErr(isAr ? 'الاسم مطلوب' : 'Name is required');
+      ok = false;
     }
     if (!/^05\d{8}$/.test(phone.trim())) {
-      setPhoneErr(true);
-      valid = false;
+      setPhoneErr(isAr ? 'أدخل رقماً سعودياً صحيحاً' : 'Enter a valid Saudi number');
+      ok = false;
     }
-    if (!valid) return;
+    if (!ok) return;
     setLoading(true);
     const code = generateOTP();
     otpRef.current = code;
@@ -79,114 +81,88 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
     }
   };
 
-  const inputCls = (err: boolean) =>
-    `w-full rounded-2xl border-2 bg-white px-4 py-3.5 text-[15px] font-bold text-brand-ink outline-none transition placeholder:font-semibold focus:border-brand-red focus:shadow-[0_0_0_4px_rgba(225,6,0,0.10)] ${
-      err ? 'border-brand-red' : 'border-brand-line'
-    }`;
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 0.9, 0.28, 1] }}
-      className="mx-auto max-w-[440px] px-5 py-10"
-    >
-      <div className="mb-8 text-center">
-        <motion.div
-          key={phase}
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-          className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-white text-5xl shadow-card"
-        >
-          {phase === 'form' ? '👋' : '📱'}
-        </motion.div>
-        <h2 className="text-[28px] font-black text-brand-ink">
+    <div className="mx-auto flex min-h-screen max-w-[460px] flex-col justify-center px-6 py-10">
+      {/* brand */}
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="mb-8 text-center">
+        <div style={{ perspective: 800 }} className="mx-auto mb-4 w-fit">
+          <motion.img
+            src={LOGO_SRC}
+            alt="Broast Al Bahr"
+            initial={{ rotateY: -120, scale: 0.7, opacity: 0 }}
+            animate={{ rotateY: 0, scale: 1, opacity: 1 }}
+            transition={{ duration: 0.8, ease: [0.2, 0.9, 0.25, 1] }}
+            className="h-24 w-24 rounded-[26px] object-cover ring-4 ring-white"
+            style={{ boxShadow: '0 20px 44px rgba(225,6,0,0.28)' }}
+          />
+        </div>
+        <h1 className="text-[26px] font-black text-brand-ink">
           {phase === 'form'
             ? isAr
-              ? 'أهلاً بك!'
-              : 'Welcome!'
+              ? 'أهلاً بك في بروست البحر'
+              : 'Welcome to Broast Al Bahr'
             : isAr
               ? 'تحقق من رقمك'
               : 'Verify Your Number'}
-        </h2>
-        <p className="mt-2 text-[14px] font-semibold text-brand-muted">
+        </h1>
+        <p className="mt-1.5 text-[14px] font-semibold text-brand-muted">
           {phase === 'form'
             ? isAr
-              ? 'أدخل اسمك ورقم جوالك للمتابعة'
-              : 'Enter your name and mobile number to continue'
+              ? 'سجّل دخولك لتبدأ الطلب وتجمع النقاط 🎁'
+              : 'Sign in to start ordering & earning points 🎁'
             : isAr
-              ? `تم إرسال رمز التحقق إلى ${phone}`
-              : `OTP sent to ${phone}`}
+              ? `تم إرسال الرمز إلى ${phone}`
+              : `Code sent to ${phone}`}
         </p>
-        {demoCode && phase === 'otp' && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mt-4 inline-block w-full rounded-2xl border-2 border-dashed border-brand-red/50 bg-brand-red/5 px-6 py-4"
-          >
-            <div className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-brand-muted">
-              {isAr ? 'رمز التحقق الخاص بك' : 'Your verification code'}
-            </div>
-            <div className="text-[30px] font-black tracking-[8px] text-brand-red">{demoCode}</div>
-          </motion.div>
-        )}
-      </div>
+      </motion.div>
 
       {phase === 'form' ? (
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className="mb-2 block text-xs font-extrabold uppercase tracking-wide text-brand-muted">
-              {isAr ? 'الاسم الكامل' : 'Full Name'}
-            </label>
-            <input
-              className={inputCls(nameErr)}
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameErr(false);
-              }}
-              placeholder={isAr ? 'مثال: محمد علي' : 'e.g. Mohammed Ali'}
-            />
-            {nameErr && (
-              <div className="mt-1.5 text-[12px] font-bold text-brand-red">
-                ⚠ {isAr ? 'الاسم مطلوب' : 'Name is required'}
-              </div>
-            )}
-          </div>
-          <div>
-            <label className="mb-2 block text-xs font-extrabold uppercase tracking-wide text-brand-muted">
-              {isAr ? 'رقم الجوال' : 'Mobile Number'}
-            </label>
-            <input
-              className={inputCls(phoneErr)}
-              value={phone}
-              type="tel"
-              maxLength={10}
-              onChange={(e) => {
-                setPhone(e.target.value);
-                setPhoneErr(false);
-              }}
-              placeholder="05XXXXXXXX"
-            />
-            {phoneErr && (
-              <div className="mt-1.5 text-[12px] font-bold text-brand-red">
-                ⚠ {isAr ? 'أدخل رقماً سعودياً صحيحاً (05XXXXXXXX)' : 'Enter a valid Saudi number (05XXXXXXXX)'}
-              </div>
-            )}
-          </div>
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
+          <Field
+            value={name}
+            onChange={(v) => {
+              setName(v);
+              setNameErr('');
+            }}
+            label={isAr ? 'الاسم الكامل' : 'Full Name'}
+            icon="🙂"
+            placeholder={isAr ? 'مثال: محمد علي' : 'e.g. Mohammed Ali'}
+            error={nameErr}
+          />
+          <Field
+            value={phone}
+            onChange={(v) => {
+              setPhone(v);
+              setPhoneErr('');
+            }}
+            label={isAr ? 'رقم الجوال' : 'Mobile Number'}
+            icon="📱"
+            type="tel"
+            inputMode="tel"
+            maxLength={10}
+            placeholder="05XXXXXXXX"
+            error={phoneErr}
+          />
           <motion.button
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.97 }}
             whileHover={{ y: -2 }}
             onClick={sendOtp}
             disabled={loading}
             className="sheen mt-2 rounded-2xl bg-brand-red py-4 text-base font-black text-white shadow-red"
           >
-            {loading ? (isAr ? 'جاري الإرسال...' : 'Sending...') : isAr ? 'إرسال رمز التحقق →' : 'Send OTP →'}
+            {loading ? (isAr ? '...' : '...') : isAr ? 'إرسال رمز التحقق →' : 'Send OTP →'}
           </motion.button>
-        </div>
+        </motion.div>
       ) : (
-        <div className="flex flex-col items-center gap-5">
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-5">
+          {demoCode && (
+            <div className="w-full rounded-2xl border-2 border-dashed border-brand-red/40 bg-brand-red/5 px-5 py-3 text-center">
+              <div className="text-[11px] font-black uppercase tracking-wide text-brand-muted">
+                {isAr ? 'رمزك (تجريبي)' : 'Your code (demo)'}
+              </div>
+              <div className="text-[26px] font-black tracking-[8px] text-brand-red">{demoCode}</div>
+            </div>
+          )}
           <div className="flex gap-2.5" dir="ltr">
             {otp.map((d, i) => (
               <input
@@ -199,13 +175,13 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
                 onKeyDown={(e) => {
                   if (e.key === 'Backspace' && !otp[i] && i > 0) refs[i - 1].current?.focus();
                 }}
-                className="h-[54px] w-[46px] rounded-2xl border-2 border-brand-line bg-white text-center text-2xl font-black text-brand-ink outline-none transition focus:-translate-y-0.5 focus:border-brand-red focus:shadow-[0_0_0_4px_rgba(225,6,0,0.12)]"
+                className="h-[58px] w-[48px] rounded-2xl border-2 border-brand-line bg-white text-center text-2xl font-black text-brand-ink outline-none transition focus:-translate-y-0.5 focus:border-brand-red focus:shadow-[0_0_0_4px_rgba(225,6,0,0.12)]"
               />
             ))}
           </div>
-          {error && <div className="text-[13px] font-bold text-brand-red">❌ {error}</div>}
+          {error && <div className="text-[13px] font-black text-brand-red">❌ {error}</div>}
           <motion.button
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.97 }}
             whileHover={{ y: -2 }}
             onClick={verify}
             disabled={otp.join('').length < 6}
@@ -234,8 +210,8 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
           <button onClick={() => setPhase('form')} className="text-xs font-bold text-brand-muted">
             ← {isAr ? 'تغيير الرقم' : 'Change number'}
           </button>
-        </div>
+        </motion.div>
       )}
-    </motion.div>
+    </div>
   );
 }

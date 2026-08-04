@@ -1,27 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Splash from './Splash';
-import StepBar from './StepBar';
 import VerifyStep from './VerifyStep';
 import MenuStep, { type Cart } from './MenuStep';
 import CheckoutStep from './CheckoutStep';
 import OrderSuccess from './OrderSuccess';
-import HistoryDrawer from './HistoryDrawer';
+import RewardsScreen from './RewardsScreen';
+import OrdersScreen from './OrdersScreen';
+import AccountScreen from './AccountScreen';
+import BottomNav, { type Tab } from './BottomNav';
 import AdminPanel, { AdminLogin } from './AdminPanel';
-import StreakBadge from './StreakBadge';
 import StreakModal from './StreakModal';
 import { pageVariants } from './motion';
+import { money } from '../lib/utils';
 import { DEFAULT_MENU, type Menu } from '../lib/data';
-import { loyaltyPointsFor } from '../lib/utils';
 import { FB } from '../lib/fb';
 import { tickStreak, loadStreak, type StreakState, type StreakTick } from '../lib/streak';
+import {
+  loadLoyalty,
+  addPoints,
+  pointsForOrder,
+  redeem,
+  type LoyaltyState,
+  type Reward,
+} from '../lib/loyalty';
 import type { Order } from './Invoice';
 
 type User = { name: string; phone: string };
 
 export default function App() {
   const [splash, setSplash] = useState(true);
-  const [step, setStep] = useState(0); // 0 verify · 1 menu · 2 checkout · 3 success
   const [user, setUser] = useState<User | null>(null);
   const [menu, setMenu] = useState<Menu>(DEFAULT_MENU);
   const [cart, setCart] = useState<Cart>({});
@@ -30,29 +38,25 @@ export default function App() {
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [view, setView] = useState<'app' | 'admin'>('app');
   const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [historyTab, setHistoryTab] = useState<'orders' | 'chat' | 'streak'>('orders');
   const [restaurantClosed, setRestaurantClosed] = useState(false);
+  const [tab, setTab] = useState<Tab>('menu');
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [streak, setStreak] = useState<StreakState>(loadStreak);
   const [streakTick, setStreakTick] = useState<StreakTick | null>(null);
+  const [loyalty, setLoyalty] = useState<LoyaltyState>(loadLoyalty);
+  const [toast, setToast] = useState<string | null>(null);
   const orderCounter = useRef(1000);
   const isAr = lang === 'ar';
-
-  // advance the daily streak on first open
-  useEffect(() => {
-    const t = tickStreak();
-    setStreak(t.state);
-    if (t.changed) setStreakTick(t);
-  }, []);
 
   useEffect(() => {
     try {
       const s = localStorage.getItem('ba_user');
-      if (s) {
-        setUser(JSON.parse(s));
-        setStep(1);
-      }
+      if (s) setUser(JSON.parse(s));
     } catch {}
+    const t = tickStreak();
+    setStreak(t.state);
+    if (t.changed) setStreakTick(t);
+    setLoyalty(loadLoyalty());
   }, []);
 
   useEffect(() => {
@@ -72,14 +76,13 @@ export default function App() {
     };
   }, []);
 
-  const saveMenu = (m: Menu) => {
-    setMenu(m);
-    FB.saveMenu(m);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3200);
   };
 
   const onVerified = (u: User) => {
     setUser(u);
-    setStep(1);
     try {
       localStorage.setItem('ba_user', JSON.stringify(u));
     } catch {}
@@ -93,6 +96,7 @@ export default function App() {
     };
     setOrders((prev) => [order, ...prev]);
     setLastOrder(order);
+    setCheckoutOpen(false);
     FB.saveOrder({
       ...payload,
       userName: payload.user.name,
@@ -101,15 +105,27 @@ export default function App() {
       orderNo: order.orderNo,
       date: order.date,
     });
-    if (user?.phone) {
-      FB.saveCustomer({
-        name: user.name,
-        phone: user.phone,
-        loyaltyPoints: loyaltyPointsFor(order.totals.total),
-      });
-    }
-    setStep(3);
+    // earn loyalty points
+    const earned = pointsForOrder(order.totals.total, loyalty.lifetime);
+    setLoyalty(addPoints(earned, `Order #${order.orderNo}`));
+    if (user?.phone) FB.saveCustomer({ name: user.name, phone: user.phone, loyaltyPoints: earned });
+    showToast(isAr ? `+${earned} نقطة 🎁` : `+${earned} points 🎁`);
   };
+
+  const onRedeem = (r: Reward) => {
+    const res = redeem(r.id);
+    if (res.ok) {
+      setLoyalty(res.state);
+      showToast(
+        isAr
+          ? `تم! استخدم الرمز ${r.code} ${r.counter ? '(عند الفرع)' : 'عند الدفع'}`
+          : `Unlocked! Use ${r.code} ${r.counter ? '(at counter)' : 'at checkout'}`,
+      );
+    }
+  };
+
+  const cartCount = Object.values(cart).reduce((s, i) => s + (i.qty || 0), 0);
+  const cartTotal = Object.values(cart).reduce((s, i) => s + i.price * (i.qty || 0), 0);
 
   if (splash) {
     return (
@@ -119,99 +135,168 @@ export default function App() {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
+        <VerifyStep isAr={isAr} onVerified={onVerified} />
+      </div>
+    );
+  }
+
   if (view === 'admin') {
-    return <AdminPanel menu={menu} onSave={saveMenu} onExit={() => setView('app')} />;
+    return (
+      <AdminPanel
+        menu={menu}
+        onSave={(m) => {
+          setMenu(m);
+          FB.saveMenu(m);
+        }}
+        onExit={() => setView('app')}
+      />
+    );
   }
 
   return (
     <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
-      {/* light header */}
-      <header className="glass sticky top-0 z-[100] border-b border-brand-line">
-        <div className="mx-auto flex h-[64px] max-w-[960px] items-center justify-between px-4">
-          <div className="flex items-center gap-3">
+      {/* slim header */}
+      <header className="glass sticky top-0 z-[80] border-b border-brand-line">
+        <div className="mx-auto flex h-[62px] max-w-[640px] items-center justify-between px-4">
+          <button onClick={() => setTab('menu')} className="flex items-center gap-2.5">
             <div style={{ perspective: 500 }}>
               <motion.div
-                animate={{ rotateY: [0, 360], y: [0, -3, 0] }}
-                transition={{
-                  rotateY: { duration: 3.2, repeat: Infinity, repeatDelay: 2.4, ease: [0.6, 0, 0.4, 1] },
-                  y: { duration: 3, repeat: Infinity, ease: 'easeInOut' },
-                }}
-                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[22px] shadow-red"
+                animate={{ rotateY: [0, 360] }}
+                transition={{ duration: 3.2, repeat: Infinity, repeatDelay: 2.6, ease: [0.6, 0, 0.4, 1] }}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl text-[20px] shadow-red"
                 style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)', transformStyle: 'preserve-3d' }}
               >
                 🍗
               </motion.div>
             </div>
-            <div className="leading-none">
-              <div className="font-display text-[15px] font-extrabold tracking-tight text-brand-ink">BROAST AL BAHR</div>
-              <div className="mt-1 font-arabic text-[13px] font-extrabold text-brand-red">بروست البحر</div>
+            <div className="text-start leading-none">
+              <div className="font-display text-[13px] font-extrabold tracking-tight text-brand-ink">BROAST AL BAHR</div>
+              <div className="mt-0.5 font-arabic text-[12px] font-extrabold text-brand-red">بروست البحر</div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <StreakBadge
-              count={streak.count}
-              onClick={() => {
-                setHistoryTab('streak');
-                setShowHistory(true);
-              }}
-            />
-            <button
-              onClick={() => setShowAdminLogin(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg shadow-soft"
-            >
-              ⚙️
-            </button>
-            <button
-              onClick={() => {
-                setHistoryTab('orders');
-                setShowHistory(true);
-              }}
-              className="relative flex h-10 w-10 flex-col items-center justify-center gap-[3px] rounded-2xl bg-white shadow-soft"
-            >
-              {[0, 1, 2].map((i) => (
-                <span key={i} className="block h-[2.5px] w-5 rounded bg-brand-ink" />
-              ))}
-              {orders.length > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-red text-[10px] font-black text-white shadow-red">
-                  {orders.length}
-                </span>
-              )}
-            </button>
-          </div>
+          </button>
+          <button
+            onClick={() => setTab('rewards')}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-white shadow-red"
+            style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
+          >
+            <span className="text-sm">🎁</span>
+            <span className="font-display text-[13px] font-black">{loyalty.points}</span>
+            <span className="mx-0.5 opacity-50">·</span>
+            <span className="text-[13px] font-black">🔥{streak.count}</span>
+          </button>
         </div>
       </header>
 
-      {step < 3 && <StepBar step={step} isAr={isAr} />}
-
+      {/* tab content */}
       <AnimatePresence mode="wait">
-        <motion.div key={step} variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          {step === 0 && <VerifyStep isAr={isAr} onVerified={onVerified} />}
-          {step === 1 && user && (
-            <MenuStep
-              menu={menu}
-              cart={cart}
-              setCart={setCart}
+        <motion.div key={tab} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+          {tab === 'menu' && (
+            <MenuStep menu={menu} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
+          )}
+          {tab === 'rewards' && <RewardsScreen loyalty={loyalty} streak={streak} isAr={isAr} onRedeem={onRedeem} />}
+          {tab === 'orders' && <OrdersScreen orders={orders} isAr={isAr} onReorder={() => setTab('menu')} />}
+          {tab === 'account' && (
+            <AccountScreen
               user={user}
+              loyalty={loyalty}
+              streak={streak}
               isAr={isAr}
               onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
-              onCheckout={() => setStep(2)}
-              restaurantClosed={restaurantClosed}
+              onAdmin={() => setShowAdminLogin(true)}
+              onLogout={() => {
+                try {
+                  localStorage.removeItem('ba_user');
+                } catch {}
+                setUser(null);
+                setCart({});
+                setTab('menu');
+              }}
             />
           )}
-          {step === 2 && user && (
-            <CheckoutStep cart={cart} user={user} isAr={isAr} onBack={() => setStep(1)} onOrderPlaced={onOrderPlaced} />
-          )}
-          {step === 3 && lastOrder && (
+        </motion.div>
+      </AnimatePresence>
+
+      {/* cart FAB */}
+      <AnimatePresence>
+        {cartCount > 0 && tab === 'menu' && !checkoutOpen && (
+          <motion.button
+            initial={{ y: 90, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 90, opacity: 0 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => setCheckoutOpen(true)}
+            className="fixed inset-x-0 bottom-[92px] z-[95] mx-auto flex w-[calc(100%-2rem)] max-w-[420px] items-center justify-between rounded-[22px] px-5 py-3.5 text-white shadow-[0_16px_40px_rgba(225,6,0,0.4)]"
+            style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
+          >
+            <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/25 px-2 text-[13px] font-black">
+              {cartCount}
+            </span>
+            <span className="font-black">{isAr ? 'عرض السلة' : 'View Cart'}</span>
+            <span className="font-display text-[15px] font-black">{money(cartTotal)}</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* redeem / points toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ y: -60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            className="fixed inset-x-0 top-4 z-[300] mx-auto w-fit max-w-[90%] rounded-2xl bg-brand-ink px-5 py-3 text-center text-[13px] font-black text-white shadow-xl"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <BottomNav active={tab} onChange={setTab} isAr={isAr} streak={streak.count} />
+
+      {/* checkout overlay */}
+      <AnimatePresence>
+        {checkoutOpen && user && (
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 34 }}
+            className="fixed inset-0 z-[200] overflow-y-auto bg-brand-cream"
+          >
+            <CheckoutStep
+              cart={cart}
+              user={user}
+              isAr={isAr}
+              onBack={() => setCheckoutOpen(false)}
+              onOrderPlaced={onOrderPlaced}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* success overlay */}
+      <AnimatePresence>
+        {lastOrder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[210] overflow-y-auto bg-brand-cream"
+          >
             <OrderSuccess
               order={lastOrder}
               isAr={isAr}
               onNewOrder={() => {
                 setCart({});
-                setStep(1);
+                setLastOrder(null);
+                setTab('menu');
               }}
             />
-          )}
-        </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       <AnimatePresence>
@@ -222,18 +307,6 @@ export default function App() {
               setView('admin');
             }}
             onCancel={() => setShowAdminLogin(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showHistory && (
-          <HistoryDrawer
-            orders={orders}
-            streak={streak}
-            initialTab={historyTab}
-            isAr={isAr}
-            onClose={() => setShowHistory(false)}
           />
         )}
       </AnimatePresence>
