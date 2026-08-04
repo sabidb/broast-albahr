@@ -75,7 +75,7 @@ export default function VariantSheet({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
-      className="fixed inset-0 z-[999] flex items-end justify-center bg-black/85"
+      className="fixed inset-0 z-[999] flex items-end justify-center bg-brand-ink/40 backdrop-blur-sm"
     >
       <motion.div
         variants={sheet}
@@ -83,31 +83,28 @@ export default function VariantSheet({
         animate="animate"
         exit="exit"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[480px] rounded-t-[24px] border border-[#3a0000] bg-[#110000] px-5 pb-9 pt-6"
+        className="w-full max-w-[480px] rounded-t-[28px] bg-white px-5 pb-9 pt-5 shadow-[0_-20px_50px_rgba(0,0,0,0.18)]"
       >
-        <div className="mx-auto mb-5 h-1 w-10 rounded bg-[#3a0000]" />
-        <div className="mb-2 text-center text-[32px]">{item.emoji}</div>
-        <div className="mb-1 text-center text-base font-extrabold text-white">{baseName}</div>
-        <div className="mb-5 text-center text-[11px] text-brand-muted">{item.cal}</div>
+        <div className="mx-auto mb-5 h-1.5 w-12 rounded-full bg-brand-cream2" />
+        <div className="mb-2 text-center text-[40px]">{item.emoji}</div>
+        <div className="mb-1 text-center text-lg font-black text-brand-ink">{baseName}</div>
+        <div className="mb-5 text-center text-[12px] font-bold text-brand-muted">{item.cal}</div>
         <div className="mb-5 flex flex-col gap-2.5">
           {variants.map((v, i) => (
             <motion.button
               key={i}
               whileTap={{ scale: 0.98 }}
               onClick={() => setSelected(i)}
-              className="flex items-center justify-between rounded-xl px-4 py-3.5 transition"
+              className="flex items-center justify-between rounded-2xl border-2 px-4 py-3.5 transition"
               style={{
-                border: selected === i ? '2px solid #FFD400' : '1px solid #2a0000',
-                background: selected === i ? 'rgba(255,221,0,0.08)' : '#0d0000',
+                borderColor: selected === i ? '#E10600' : 'rgba(30,18,6,0.10)',
+                background: selected === i ? 'rgba(225,6,0,0.06)' : '#FFF6EA',
               }}
             >
-              <span
-                className="text-sm font-bold"
-                style={{ color: selected === i ? '#FFD400' : '#ccc' }}
-              >
+              <span className="text-[15px] font-extrabold" style={{ color: selected === i ? '#E10600' : '#3A2A18' }}>
                 {v.label}
               </span>
-              <span className="text-[15px] font-extrabold text-brand-gold">{money(v.price)}</span>
+              <span className="text-[15px] font-black text-brand-ink">{money(v.price)}</span>
             </motion.button>
           ))}
         </div>
@@ -115,12 +112,7 @@ export default function VariantSheet({
           whileTap={{ scale: 0.97 }}
           onClick={confirm}
           disabled={selected === null}
-          className="sheen w-full rounded-xl py-4 text-base font-extrabold disabled:cursor-not-allowed"
-          style={{
-            background: selected !== null ? 'linear-gradient(135deg,#E10600,#8a0000)' : '#1a0000',
-            border: selected !== null ? '2px solid #FFD400' : '1px solid #2a0000',
-            color: selected !== null ? '#FFD400' : '#444',
-          }}
+          className="sheen w-full rounded-2xl bg-brand-red py-4 text-base font-black text-white shadow-red disabled:cursor-not-allowed disabled:bg-brand-cream2 disabled:text-brand-muted disabled:shadow-none"
         >
           {isAr ? 'أضف للسلة' : 'Add to Cart'}
         </motion.button>

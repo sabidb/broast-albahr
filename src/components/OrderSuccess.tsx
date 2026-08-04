@@ -18,9 +18,8 @@ export default function OrderSuccess({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="relative mx-auto max-w-[420px] px-6 py-14 text-center"
+      className="relative mx-auto max-w-[440px] px-6 py-14 text-center"
     >
-      {/* floating confetti */}
       {confetti.map((c, i) => (
         <motion.span
           key={i}
@@ -38,22 +37,22 @@ export default function OrderSuccess({
         initial={{ scale: 0, rotate: -30 }}
         animate={{ scale: 1, rotate: 0 }}
         transition={{ type: 'spring', stiffness: 260, damping: 14 }}
-        className="mb-4 text-[70px]"
+        className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full bg-white text-[56px] shadow-card"
       >
         🎉
       </motion.div>
-      <h2 className="mb-2.5 text-2xl font-extrabold text-brand-gold">
-        {isAr ? 'تم إرسال طلبك!' : 'Order Sent!'}
-      </h2>
-      <p className="mb-6 text-sm leading-relaxed text-brand-muted">
+      <h2 className="mb-2.5 text-3xl font-black text-brand-ink">{isAr ? 'تم إرسال طلبك!' : 'Order Sent!'}</h2>
+      <p className="mb-6 text-sm font-semibold leading-relaxed text-brand-muted">
         {isAr
           ? `شكراً ${order.user.name}! تم إرسال طلبك عبر واتساب. سنتواصل معك قريباً لتأكيد الطلب.`
           : `Thanks ${order.user.name}! Your order was sent via WhatsApp. We'll confirm shortly.`}
       </p>
 
-      <div className="mb-6 rounded-2xl border border-[#2d7a2d] bg-[#0a2a0a] px-5 py-4">
-        <div className="text-[13px] text-[#6fcf6f]">{isAr ? 'رقم الطلب' : 'Order No.'}</div>
-        <div className="text-2xl font-black text-[#4caf50]">#{order.orderNo}</div>
+      <div className="mb-6 rounded-3xl border-2 border-brand-green/25 bg-brand-green/8 px-5 py-4">
+        <div className="text-[13px] font-black uppercase tracking-wide text-brand-green">
+          {isAr ? 'رقم الطلب' : 'Order No.'}
+        </div>
+        <div className="text-3xl font-black text-brand-green">#{order.orderNo}</div>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -61,16 +60,14 @@ export default function OrderSuccess({
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.97 }}
           onClick={() => setShowInvoice(true)}
-          className="sheen rounded-2xl py-3.5 text-[15px] font-extrabold text-black shadow-gold"
-          style={{ background: 'linear-gradient(135deg,#FFD400,#FF8C00)' }}
+          className="sheen rounded-2xl bg-brand-red py-4 text-[15px] font-black text-white shadow-red"
         >
           🧾 {isAr ? 'عرض الفاتورة' : 'View Invoice'}
         </motion.button>
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={onNewOrder}
-          className="rounded-2xl border-2 border-brand-gold py-3 text-[15px] font-extrabold text-brand-gold"
-          style={{ background: 'linear-gradient(135deg,#cc0000,#990000)' }}
+          className="rounded-2xl border-2 border-brand-red bg-white py-3.5 text-[15px] font-black text-brand-red"
         >
           + {isAr ? 'طلب جديد' : 'New Order'}
         </motion.button>

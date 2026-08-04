@@ -64,11 +64,11 @@ export default function AiChat({ isAr }: { isAr: boolean }) {
             className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed"
+              className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] font-semibold leading-relaxed"
               style={{
-                background: m.role === 'user' ? 'linear-gradient(135deg,#E10600,#8a0000)' : '#1B0505',
-                border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.06)',
-                color: '#F8F8F8',
+                background: m.role === 'user' ? '#E10600' : '#FFFFFF',
+                color: m.role === 'user' ? '#fff' : '#1E1206',
+                border: m.role === 'user' ? 'none' : '1px solid rgba(30,18,6,0.08)',
               }}
             >
               {m.text}
@@ -76,32 +76,27 @@ export default function AiChat({ isAr }: { isAr: boolean }) {
           </motion.div>
         ))}
         {loading && (
-          <div className="flex w-fit gap-1 rounded-2xl bg-[#1B0505] px-3.5 py-2.5">
+          <div className="flex w-fit gap-1 rounded-2xl border border-brand-line bg-white px-3.5 py-2.5">
             {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                className="h-1.5 w-1.5 animate-bounceDot rounded-full bg-brand-red"
-                style={{ animationDelay: `${i * 0.18}s` }}
-              />
+              <span key={i} className="h-1.5 w-1.5 animate-bounceDot rounded-full bg-brand-red" style={{ animationDelay: `${i * 0.18}s` }} />
             ))}
           </div>
         )}
         <div ref={bottom} />
       </div>
-      <div className="flex gap-2 border-t border-white/5 pt-3">
+      <div className="flex gap-2 border-t border-brand-line pt-3">
         <input
           value={inp}
           onChange={(e) => setInp(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && send()}
           placeholder={isAr ? 'اكتب سؤالك...' : 'Ask a question...'}
-          className="flex-1 rounded-xl border border-white/10 bg-brand-ink px-3.5 py-2.5 text-[13px] text-white outline-none focus:border-brand-gold"
+          className="flex-1 rounded-2xl border-2 border-brand-line bg-white px-3.5 py-2.5 text-[13px] font-bold text-brand-ink outline-none focus:border-brand-red"
         />
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={send}
           disabled={loading}
-          className="rounded-xl px-4 text-base font-bold text-brand-gold"
-          style={{ background: 'linear-gradient(135deg,#E10600,#8a0000)' }}
+          className="rounded-2xl bg-brand-red px-4 text-lg font-black text-white shadow-red"
         >
           →
         </motion.button>

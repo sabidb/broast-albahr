@@ -12,15 +12,15 @@ export function AdminLogin({ onLogin, onCancel }: { onLogin: () => void; onCance
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[400] flex items-center justify-center bg-black/90 p-4"
+      className="fixed inset-0 z-[400] flex items-center justify-center bg-brand-ink/50 p-4 backdrop-blur-sm"
     >
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
-        className="w-80 rounded-2xl border-2 border-brand-red bg-[#0a0000] px-7 py-8 text-center"
+        className="w-80 rounded-3xl bg-white px-7 py-8 text-center shadow-card"
       >
-        <div className="mb-3 text-4xl">🔐</div>
-        <div className="mb-5 text-lg font-extrabold text-brand-gold">Admin Access</div>
+        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-red/10 text-4xl">🔐</div>
+        <div className="mb-5 text-lg font-black text-brand-ink">Admin Access</div>
         <input
           type="password"
           value={pw}
@@ -31,15 +31,15 @@ export function AdminLogin({ onLogin, onCancel }: { onLogin: () => void; onCance
           }}
           onKeyDown={(e) => e.key === 'Enter' && attempt()}
           placeholder="Password"
-          className="mb-2 w-full rounded-lg border bg-[#1a0000] px-3.5 py-3 text-white outline-none"
-          style={{ borderColor: err ? '#E10600' : '#3a0000' }}
+          className="mb-2 w-full rounded-2xl border-2 bg-white px-4 py-3 font-bold text-brand-ink outline-none focus:border-brand-red"
+          style={{ borderColor: err ? '#E10600' : 'rgba(30,18,6,0.10)' }}
         />
-        {err && <div className="mb-2.5 text-xs text-brand-red">❌ Incorrect password</div>}
+        {err && <div className="mb-2.5 text-xs font-bold text-brand-red">❌ Incorrect password</div>}
         <div className="mt-1.5 flex gap-2.5">
-          <button onClick={onCancel} className="flex-1 rounded-lg bg-[#1a1a1a] py-2.5 font-bold text-[#888]">
+          <button onClick={onCancel} className="flex-1 rounded-2xl bg-brand-cream2 py-3 font-black text-brand-ink2">
             Cancel
           </button>
-          <button onClick={attempt} className="flex-1 rounded-lg bg-brand-red py-2.5 font-bold text-white">
+          <button onClick={attempt} className="flex-1 rounded-2xl bg-brand-red py-3 font-black text-white shadow-red">
             Login
           </button>
         </div>
@@ -85,17 +85,17 @@ export default function AdminPanel({
   };
 
   return (
-    <div className="ambient min-h-screen font-sans text-white">
-      <div className="app-header sticky top-0 z-[100] border-b-[3px] border-brand-gold" style={{ background: 'linear-gradient(90deg,#cc0000,#aa0000)' }}>
+    <div className="ambient min-h-screen font-sans text-brand-ink">
+      <div className="sticky top-0 z-[100] bg-brand-red shadow-red">
         <div className="mx-auto flex h-[62px] max-w-[900px] items-center justify-between px-5">
           <div className="flex items-center gap-2.5">
             <span className="text-[22px]">⚙️</span>
             <div>
-              <div className="text-base font-extrabold text-brand-gold">ADMIN PANEL</div>
-              <div className="text-[11px] text-white/70">Broast Albahr Management</div>
+              <div className="text-base font-black text-white">ADMIN PANEL</div>
+              <div className="text-[11px] font-bold text-white/80">Broast Albahr Management</div>
             </div>
           </div>
-          <button onClick={onExit} className="rounded-full border border-brand-gold/40 bg-black/30 px-4 py-2 text-[13px] font-bold text-brand-gold">
+          <button onClick={onExit} className="rounded-full bg-white/20 px-4 py-2 text-[13px] font-black text-white">
             ← Back
           </button>
         </div>
@@ -105,22 +105,17 @@ export default function AdminPanel({
         <div className="mb-7 grid grid-cols-3 gap-3">
           {(
             [
-              ['📋', 'Total', all.length, '#FFD400'],
-              ['✅', 'Available', available, '#4caf50'],
+              ['📋', 'Total', all.length, '#1E1206'],
+              ['✅', 'Available', available, '#11845B'],
               ['❌', 'Off', all.length - available, '#E10600'],
             ] as [string, string, number, string][]
           ).map(([ic, l, v, c]) => (
-            <motion.div
-              key={l}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="card-surface p-4"
-            >
+            <motion.div key={l} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card-surface p-4">
               <div className="text-[22px]">{ic}</div>
-              <div className="mt-1.5 text-[26px] font-extrabold" style={{ color: c }}>
+              <div className="mt-1.5 text-[26px] font-black" style={{ color: c }}>
                 {v}
               </div>
-              <div className="text-xs text-brand-muted">{l}</div>
+              <div className="text-xs font-bold text-brand-muted">{l}</div>
             </motion.div>
           ))}
         </div>
@@ -129,7 +124,7 @@ export default function AdminPanel({
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-4 rounded-lg border border-[#2d7a2d] bg-[#0a2a0a] px-4 py-2.5 text-[13px] font-bold text-[#6fcf6f]"
+            className="mb-4 rounded-2xl border-2 border-brand-green/25 bg-brand-green/8 px-4 py-2.5 text-[13px] font-black text-brand-green"
           >
             ✅ Saved!
           </motion.div>
@@ -137,18 +132,18 @@ export default function AdminPanel({
 
         {Object.entries(menu).map(([cat, items]) => (
           <div key={cat} className="mb-6">
-            <div className="mb-2 border-b border-[#222] pb-1.5 text-sm font-extrabold text-brand-gold">{cat}</div>
+            <div className="mb-2 border-b-2 border-brand-line pb-1.5 text-sm font-black text-brand-red">{cat}</div>
             <div className="flex flex-col gap-2">
               {items.map((it) => (
                 <div
                   key={it.id}
-                  className="flex items-center gap-2.5 rounded-xl border bg-[#110000] px-3.5 py-2.5"
-                  style={{ borderColor: it.available ? '#222' : '#3a0000', opacity: it.available ? 1 : 0.6 }}
+                  className="flex items-center gap-2.5 rounded-2xl border-2 bg-white px-3.5 py-2.5"
+                  style={{ borderColor: it.available ? 'rgba(30,18,6,0.08)' : 'rgba(225,6,0,0.25)', opacity: it.available ? 1 : 0.6 }}
                 >
-                  <span className="shrink-0 text-[22px]">{it.emoji}</span>
+                  <span className="shrink-0 text-[24px]">{it.emoji}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold text-white">{it.name}</div>
-                    <div className="font-arabic text-[11px] text-[#555]">{it.nameAr}</div>
+                    <div className="truncate text-[13px] font-black text-brand-ink">{it.name}</div>
+                    <div className="font-arabic text-[11px] font-bold text-brand-muted">{it.nameAr}</div>
                   </div>
                   {editingId === it.id ? (
                     <div className="flex items-center gap-1.5">
@@ -157,12 +152,12 @@ export default function AdminPanel({
                         value={editPrice}
                         autoFocus
                         onChange={(e) => setEditPrice(e.target.value)}
-                        className="w-[68px] rounded-md border border-brand-gold bg-[#222] px-2 py-1 text-[13px] text-white"
+                        className="w-[70px] rounded-lg border-2 border-brand-red bg-white px-2 py-1 text-[13px] font-bold text-brand-ink"
                       />
-                      <button onClick={() => savePrice(it.id)} className="rounded-md bg-brand-red px-2.5 py-1 text-xs font-bold text-white">
+                      <button onClick={() => savePrice(it.id)} className="rounded-lg bg-brand-red px-2.5 py-1 text-xs font-black text-white">
                         Save
                       </button>
-                      <button onClick={() => setEditingId(null)} className="rounded-md bg-[#222] px-2 py-1 text-xs text-[#aaa]">
+                      <button onClick={() => setEditingId(null)} className="rounded-lg bg-brand-cream2 px-2 py-1 text-xs font-bold text-brand-ink2">
                         ✕
                       </button>
                     </div>
@@ -172,19 +167,15 @@ export default function AdminPanel({
                         setEditingId(it.id);
                         setEditPrice(String(it.price));
                       }}
-                      className="whitespace-nowrap rounded-md border border-[#333] bg-[#1a1a1a] px-2.5 py-1 text-xs font-bold text-brand-gold"
+                      className="whitespace-nowrap rounded-lg border-2 border-brand-line bg-brand-cream px-2.5 py-1 text-xs font-black text-brand-red"
                     >
                       {money(it.price)} ✎
                     </button>
                   )}
                   <button
                     onClick={() => toggle(it.id)}
-                    className="whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-bold"
-                    style={{
-                      background: it.available ? '#0a2a0a' : '#2a0000',
-                      borderColor: it.available ? '#2d7a2d' : '#660000',
-                      color: it.available ? '#4caf50' : '#E10600',
-                    }}
+                    className="whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-black text-white"
+                    style={{ background: it.available ? '#11845B' : '#E10600' }}
                   >
                     {it.available ? '✅ On' : '❌ Off'}
                   </button>

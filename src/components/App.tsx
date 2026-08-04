@@ -32,7 +32,6 @@ export default function App() {
   const orderCounter = useRef(1000);
   const isAr = lang === 'ar';
 
-  // hydrate saved user
   useEffect(() => {
     try {
       const s = localStorage.getItem('ba_user');
@@ -43,7 +42,6 @@ export default function App() {
     } catch {}
   }, []);
 
-  // Firebase live menu + settings
   useEffect(() => {
     let unsubMenu = () => {};
     let unsubSettings = () => {};
@@ -114,37 +112,37 @@ export default function App() {
 
   return (
     <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
-      {/* header */}
-      <header className="app-header sticky top-0 z-[100] border-b-[3px] border-brand-gold" style={{ background: 'linear-gradient(100deg,#c20500,#8a0000 55%,#5e0000)', boxShadow: '0 10px 30px rgba(0,0,0,.5)' }}>
-        <div className="mx-auto flex h-[62px] max-w-[960px] items-center justify-between px-5">
+      {/* light header */}
+      <header className="glass sticky top-0 z-[100] border-b border-brand-line">
+        <div className="mx-auto flex h-[64px] max-w-[960px] items-center justify-between px-4">
           <div className="flex items-center gap-3">
             <div
-              className="flex h-[46px] w-[46px] animate-floaty items-center justify-center rounded-full border-[3px] border-brand-gold text-[22px]"
-              style={{ background: 'radial-gradient(circle at 35% 30%,#d61111,#7a0000)', boxShadow: '0 6px 18px rgba(214,0,0,.5),0 0 0 4px rgba(255,212,0,.12)' }}
+              className="flex h-11 w-11 animate-floaty items-center justify-center rounded-2xl text-[22px] shadow-red"
+              style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
             >
               🍗
             </div>
-            <div>
-              <div className="text-[17px] font-extrabold tracking-wide text-brand-gold">BROAST ALBAHR</div>
-              <div className="font-arabic text-xs font-bold text-white">بروست البحر</div>
+            <div className="leading-none">
+              <div className="text-[18px] font-black tracking-tight text-brand-ink">BROAST ALBAHR</div>
+              <div className="mt-0.5 font-arabic text-[13px] font-extrabold text-brand-red">بروست البحر</div>
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAdminLogin(true)}
-              className="rounded-full border border-brand-gold/30 bg-black/25 px-3 py-1.5 text-sm text-brand-gold/70"
+              className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg shadow-soft"
             >
               ⚙️
             </button>
             <button
               onClick={() => setShowHistory(true)}
-              className="relative flex flex-col gap-1 rounded-[10px] border border-brand-gold/30 bg-black/25 px-2.5 py-2"
+              className="relative flex h-10 w-10 flex-col items-center justify-center gap-[3px] rounded-2xl bg-white shadow-soft"
             >
               {[0, 1, 2].map((i) => (
-                <span key={i} className="block h-0.5 w-5 rounded bg-brand-gold" />
+                <span key={i} className="block h-[2.5px] w-5 rounded bg-brand-ink" />
               ))}
               {orders.length > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-gold text-[10px] font-black text-black">
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-red text-[10px] font-black text-white shadow-red">
                   {orders.length}
                 </span>
               )}
@@ -171,13 +169,7 @@ export default function App() {
             />
           )}
           {step === 2 && user && (
-            <CheckoutStep
-              cart={cart}
-              user={user}
-              isAr={isAr}
-              onBack={() => setStep(1)}
-              onOrderPlaced={onOrderPlaced}
-            />
+            <CheckoutStep cart={cart} user={user} isAr={isAr} onBack={() => setStep(1)} onOrderPlaced={onOrderPlaced} />
           )}
           {step === 3 && lastOrder && (
             <OrderSuccess

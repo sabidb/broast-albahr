@@ -111,36 +111,31 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
   };
 
   const seg = (a: boolean) =>
-    `flex-1 rounded-xl border-2 py-2.5 text-[13px] font-bold transition ${
-      a ? 'border-brand-red bg-brand-red/15 text-brand-gold' : 'border-white/10 bg-brand-panel text-brand-muted'
+    `flex-1 rounded-2xl border-2 py-3 text-[14px] font-black transition ${
+      a ? 'border-brand-red bg-brand-red text-white shadow-red' : 'border-brand-line bg-white text-brand-ink2'
     }`;
-  const label = 'mb-2.5 block text-xs font-bold tracking-wide text-brand-muted';
+  const label = 'mb-2.5 block text-xs font-extrabold uppercase tracking-wide text-brand-muted';
 
   const Section = ({ children }: { children: React.ReactNode }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      className="mb-4"
-    >
+    <motion.div initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-4">
       {children}
     </motion.div>
   );
 
   return (
     <div className="min-h-screen">
-      <div className="glass sticky top-0 z-[100] flex items-center gap-3 border-b border-brand-gold/15 px-5 py-4">
+      <div className="glass sticky top-0 z-[100] flex items-center gap-3 border-b border-brand-line px-5 py-4">
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={onBack}
-          className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-white/5 text-lg text-white"
+          className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg text-brand-ink shadow-soft"
         >
           ←
         </motion.button>
-        <div className="text-[17px] font-extrabold text-white">{isAr ? 'إتمام الطلب 🛒' : 'Checkout 🛒'}</div>
+        <div className="text-[18px] font-black text-brand-ink">{isAr ? 'إتمام الطلب 🛒' : 'Checkout 🛒'}</div>
       </div>
 
-      <div className="px-4 pb-28 pt-5">
+      <div className="mx-auto max-w-[600px] px-4 pb-28 pt-5">
         <Section>
           <span className={label}>{isAr ? 'نوع الطلب' : 'ORDER TYPE'}</span>
           <div className="flex gap-2.5">
@@ -155,44 +150,49 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
 
         <Section>
           <span className={label}>{isAr ? 'الفرع' : 'BRANCH'}</span>
-          {BRANCHES.map((b) => (
-            <motion.button
-              key={b.id}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => setBranch(b.id)}
-              className="mb-2 w-full rounded-2xl border-2 px-4 py-3.5 text-start transition"
-              style={{
-                borderColor: branch === b.id ? '#E10600' : 'rgba(255,255,255,0.06)',
-                background: branch === b.id ? 'rgba(214,0,0,0.12)' : '#1B0505',
-                color: branch === b.id ? '#FFD400' : '#A8A8A8',
-              }}
-            >
-              <div className="text-[13px] font-bold">{isAr ? b.nameAr : b.nameEn}</div>
-              <div className="mt-0.5 text-[11px]" style={{ color: branch === b.id ? 'rgba(255,212,0,0.6)' : '#555' }}>
-                {isAr ? b.nameEn : b.nameAr}
-              </div>
-            </motion.button>
-          ))}
+          {BRANCHES.map((b) => {
+            const on = branch === b.id;
+            return (
+              <motion.button
+                key={b.id}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setBranch(b.id)}
+                className="mb-2.5 w-full rounded-2xl border-2 bg-white px-4 py-3.5 text-start transition"
+                style={{
+                  borderColor: on ? '#E10600' : 'rgba(30,18,6,0.10)',
+                  boxShadow: on ? '0 10px 24px rgba(225,6,0,0.16)' : '0 2px 8px rgba(180,60,0,0.05)',
+                }}
+              >
+                <div className="text-[14px] font-black" style={{ color: on ? '#E10600' : '#1E1206' }}>
+                  {isAr ? b.nameAr : b.nameEn}
+                </div>
+                <div className="mt-0.5 text-[11px] font-bold text-brand-muted">{isAr ? b.nameEn : b.nameAr}</div>
+              </motion.button>
+            );
+          })}
         </Section>
 
         {orderType === 'pickup' && (
           <Section>
             <span className={label}>⏰ {isAr ? 'وقت الاستلام' : 'PICKUP TIME'}</span>
             <div className="flex flex-wrap gap-2">
-              {PICKUP_SLOTS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setPickupTime(s)}
-                  className="rounded-full border-2 px-3.5 py-1.5 text-xs font-semibold transition"
-                  style={{
-                    borderColor: pickupTime === s ? '#E10600' : '#2a0000',
-                    background: pickupTime === s ? 'rgba(214,0,0,0.15)' : '#110000',
-                    color: pickupTime === s ? '#FFD400' : '#666',
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
+              {PICKUP_SLOTS.map((s) => {
+                const on = pickupTime === s;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setPickupTime(s)}
+                    className="rounded-full border-2 px-4 py-2 text-xs font-black transition"
+                    style={{
+                      borderColor: on ? '#E10600' : 'rgba(30,18,6,0.10)',
+                      background: on ? '#E10600' : '#FFFFFF',
+                      color: on ? '#fff' : '#8C7A64',
+                    }}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
             </div>
           </Section>
         )}
@@ -205,21 +205,20 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={requestLoc}
-                  className="sheen w-full rounded-xl py-3 text-sm font-extrabold text-brand-gold"
-                  style={{ background: 'linear-gradient(135deg,#E10600,#8a0000)' }}
+                  className="sheen w-full rounded-2xl bg-brand-red py-3.5 text-sm font-black text-white shadow-red"
                 >
                   {isAr ? '📍 مشاركة موقعي' : '📍 Share My Location'}
                 </motion.button>
               )}
               {locStatus === 'loading' && (
-                <div className="py-3 text-center text-brand-muted">
+                <div className="py-3 text-center font-bold text-brand-muted">
                   {isAr ? 'جاري تحديد الموقع...' : 'Getting your location...'}
                 </div>
               )}
               {locStatus === 'found' && (
                 <div>
-                  <div className="mb-1.5 font-bold text-[#00D26A]">✅ {distance} km {isAr ? 'بعيد' : 'away'}</div>
-                  <div className="text-base font-extrabold text-brand-gold">
+                  <div className="mb-1.5 font-black text-brand-green">✅ {distance} km {isAr ? 'بعيد' : 'away'}</div>
+                  <div className="text-lg font-black text-brand-red">
                     {isAr ? 'التوصيل' : 'Delivery'}: {money(deliveryFee || 0)}
                   </div>
                   {coords && (
@@ -227,7 +226,7 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
                       href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-2 block text-xs text-brand-red"
+                      className="mt-2 block text-xs font-bold text-brand-red underline"
                     >
                       🗺️ {isAr ? 'عرض على الخريطة' : 'View on map'}
                     </a>
@@ -235,19 +234,16 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
                 </div>
               )}
               {locStatus === 'unavailable' && (
-                <div className="font-bold text-brand-red">
+                <div className="font-black text-brand-red">
                   ⚠️ {isAr ? 'خارج نطاق التوصيل (7 كم كحد أقصى)' : 'Outside delivery range (max 7km)'}
                 </div>
               )}
               {locStatus === 'error' && (
                 <div>
-                  <div className="mb-2 text-xs text-brand-red">
+                  <div className="mb-2 text-xs font-bold text-brand-red">
                     {isAr ? 'تعذر تحديد الموقع' : 'Could not get location'}
                   </div>
-                  <button
-                    onClick={requestLoc}
-                    className="rounded-lg border border-brand-red px-3.5 py-2 text-xs text-brand-red"
-                  >
+                  <button onClick={requestLoc} className="rounded-xl border-2 border-brand-red px-4 py-2 text-xs font-black text-brand-red">
                     {isAr ? 'حاول مجدداً' : 'Try again'}
                   </button>
                 </div>
@@ -259,30 +255,35 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
         <Section>
           <span className={label}>{isAr ? 'طريقة الدفع' : 'PAYMENT'}</span>
           <div className="flex flex-wrap gap-2">
-            {PAYMENT_METHODS.map(([id, ic, en]) => (
-              <button
-                key={id}
-                onClick={() => setPay(id)}
-                className="rounded-full border px-3.5 py-2 text-xs font-bold transition"
-                style={{
-                  borderColor: pay === id ? '#FFD400' : 'rgba(255,255,255,0.08)',
-                  background: pay === id ? 'rgba(255,212,0,0.1)' : '#1B0505',
-                  color: pay === id ? '#FFD400' : '#A8A8A8',
-                }}
-              >
-                {ic} {en}
-              </button>
-            ))}
+            {PAYMENT_METHODS.map(([id, ic, en]) => {
+              const on = pay === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setPay(id)}
+                  className="rounded-full border-2 px-4 py-2 text-xs font-black transition"
+                  style={{
+                    borderColor: on ? '#E10600' : 'rgba(30,18,6,0.10)',
+                    background: on ? '#E10600' : '#FFFFFF',
+                    color: on ? '#fff' : '#8C7A64',
+                  }}
+                >
+                  {ic} {en}
+                </button>
+              );
+            })}
           </div>
         </Section>
 
         <Section>
           <span className={label}>🎟️ {isAr ? 'رمز الكوبون' : 'COUPON'}</span>
           {applied ? (
-            <div className="flex items-center justify-between rounded-xl border border-[#2d7a2d] bg-[#0a2a0a] px-3.5 py-3">
+            <div className="flex items-center justify-between rounded-2xl border-2 border-brand-green/30 bg-brand-green/8 px-4 py-3">
               <div>
-                <div className="text-sm font-bold text-[#4caf50]">✅ {applied.code}</div>
-                <div className="text-xs text-[#6fcf6f]">{isAr ? `خصم ${money(discount)}` : `Discount ${money(discount)}`}</div>
+                <div className="text-sm font-black text-brand-green">✅ {applied.code}</div>
+                <div className="text-xs font-bold text-brand-green/80">
+                  {isAr ? `خصم ${money(discount)}` : `Discount ${money(discount)}`}
+                </div>
               </div>
               <button
                 onClick={() => {
@@ -290,7 +291,7 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
                   setCoupon('');
                   setCouponMsg('');
                 }}
-                className="rounded-lg bg-[#2a0000] px-3 py-1.5 text-xs font-bold text-brand-red"
+                className="rounded-xl bg-brand-red/10 px-3 py-1.5 text-xs font-black text-brand-red"
               >
                 {isAr ? 'إزالة' : 'Remove'}
               </button>
@@ -305,18 +306,15 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && applyCoupon()}
                 placeholder={isAr ? 'أدخل الرمز' : 'Enter code'}
-                className="flex-1 rounded-xl border border-white/10 bg-brand-panel px-3.5 py-3 text-[13px] text-white outline-none focus:border-brand-gold"
+                className="flex-1 rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-[13px] font-bold text-brand-ink outline-none focus:border-brand-red"
               />
-              <button
-                onClick={applyCoupon}
-                className="rounded-xl bg-brand-red px-4 text-[13px] font-bold text-white"
-              >
+              <button onClick={applyCoupon} className="rounded-2xl bg-brand-red px-5 text-[13px] font-black text-white shadow-red">
                 {isAr ? 'تطبيق' : 'Apply'}
               </button>
             </div>
           )}
-          {couponMsg && !applied && <div className="mt-1.5 text-xs text-brand-red">{couponMsg}</div>}
-          <div className="mt-2 text-[11px] text-[#444]">
+          {couponMsg && !applied && <div className="mt-1.5 text-xs font-bold text-brand-red">{couponMsg}</div>}
+          <div className="mt-2 text-[11px] font-bold text-brand-muted">
             {isAr ? 'جرّب: ALBAHR10 · WELCOME5 · BROAST15' : 'Try: ALBAHR10 · WELCOME5 · BROAST15'}
           </div>
         </Section>
@@ -327,22 +325,22 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder={isAr ? 'أي طلب خاص...' : 'Special requests...'}
-            className="h-16 w-full resize-none rounded-xl border border-white/10 bg-brand-panel px-3.5 py-3 text-[13px] text-white outline-none focus:border-brand-gold"
+            className="h-20 w-full resize-none rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-[13px] font-bold text-brand-ink outline-none focus:border-brand-red"
           />
         </Section>
 
         <Section>
-          <div className="card-surface p-4">
+          <div className="card-surface p-5">
             <span className={label}>{isAr ? 'ملخص الطلب' : 'ORDER SUMMARY'}</span>
             {items.map((i) => (
-              <div key={i.id} className="mb-2 flex justify-between text-[13px]">
-                <span className="text-brand-muted">
+              <div key={i.id} className="mb-2 flex justify-between text-[13px] font-bold">
+                <span className="text-brand-ink2">
                   {i.emoji} {isAr ? i.nameAr : i.name} ×{i.qty}
                 </span>
-                <span className="font-bold text-brand-gold">{money(i.price * (i.qty || 0))}</span>
+                <span className="font-black text-brand-red">{money(i.price * (i.qty || 0))}</span>
               </div>
             ))}
-            <div className="mt-3 border-t border-white/5 pt-3">
+            <div className="mt-3 border-t border-brand-line pt-3">
               {[
                 [isAr ? 'المجموع الفرعي' : 'Subtotal', money(totals.subtotal)],
                 [isAr ? 'رسوم المنصة' : 'Platform Fee', money(totals.pFee)],
@@ -350,14 +348,14 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
                 ...(discount ? [[isAr ? 'الخصم' : 'Discount', '- ' + money(discount)]] : []),
                 [isAr ? 'ضريبة 15%' : 'VAT 15%', money(totals.vat)],
               ].map(([l, v], i) => (
-                <div key={i} className="mb-1.5 flex justify-between text-xs text-brand-muted">
+                <div key={i} className="mb-1.5 flex justify-between text-xs font-bold text-brand-muted">
                   <span>{l}</span>
                   <span>{v}</span>
                 </div>
               ))}
-              <div className="mt-2.5 flex justify-between border-t border-white/5 pt-2.5 text-lg font-extrabold text-brand-gold">
+              <div className="mt-2.5 flex justify-between border-t border-brand-line pt-3 text-xl font-black text-brand-ink">
                 <span>{isAr ? 'الإجمالي' : 'Total'}</span>
-                <span>{money(totals.total)}</span>
+                <span className="text-brand-red">{money(totals.total)}</span>
               </div>
             </div>
           </div>
@@ -367,8 +365,8 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.97 }}
           onClick={placeOrder}
-          className="sheen w-full rounded-2xl py-4 text-[17px] font-black tracking-wide text-black shadow-gold"
-          style={{ background: 'linear-gradient(135deg,#FFD400,#FF8C00)' }}
+          className="sheen w-full rounded-2xl py-4 text-[17px] font-black text-white shadow-red"
+          style={{ background: 'linear-gradient(135deg,#11845B,#0c6b49)' }}
         >
           {isAr ? '✅ تأكيد الطلب عبر واتساب' : '✅ Confirm via WhatsApp'}
         </motion.button>

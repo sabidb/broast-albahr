@@ -38,10 +38,7 @@ export default function MenuStep({
   const [variantItem, setVariantItem] = useState<MenuItem | null>(null);
 
   const add = (i: MenuItem) =>
-    setCart((prev) => ({
-      ...prev,
-      [i.id]: { ...i, qty: (prev[i.id]?.qty || 0) + 1 },
-    }));
+    setCart((prev) => ({ ...prev, [i.id]: { ...i, qty: (prev[i.id]?.qty || 0) + 1 } }));
   const remove = (id: string | number) =>
     setCart((prev) => {
       const u = { ...prev };
@@ -58,76 +55,80 @@ export default function MenuStep({
   return (
     <div>
       {/* user strip */}
-      <div className="flex items-center justify-between border-b border-[#2a0000] bg-black/40 px-5 py-2.5">
-        <div className="text-[13px] text-[#888]">
-          👤 <span className="font-bold text-brand-gold">{user.name}</span>
-          <span className="mx-1.5 text-[#444]">·</span>
-          <span className="text-[#666]">{user.phone}</span>
+      <div className="flex items-center justify-between border-b border-brand-line bg-white/70 px-5 py-3 backdrop-blur">
+        <div className="text-[13px] font-bold text-brand-ink2">
+          👤 <span className="font-black text-brand-red">{user.name}</span>
+          <span className="mx-1.5 text-brand-muted">·</span>
+          <span className="text-brand-muted">{user.phone}</span>
         </div>
         <button
           onClick={onToggleLang}
-          className="rounded-full border border-brand-gold/30 bg-brand-gold/10 px-3 py-1 text-xs font-bold text-brand-gold"
+          className="rounded-full border-2 border-brand-red/25 bg-brand-red/5 px-3 py-1 text-xs font-black text-brand-red"
         >
           {isAr ? 'EN' : 'عربي'}
         </button>
       </div>
 
-      {/* hero */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="border-b border-[#330000] px-5 pb-4 pt-6 text-center"
-        style={{ background: 'linear-gradient(135deg,#cc0000 0%,#880000 60%,#130000 100%)' }}
-      >
-        <div className="mb-1 animate-floaty text-[40px]">🍗</div>
-        <h2 className="text-xl font-extrabold text-brand-gold">
-          {isAr ? 'اختر طلبك' : 'Choose Your Order'}
-        </h2>
-        <p className="mt-1 text-xs text-white/60">
-          {isAr ? 'مكة المكرمة - الكعكية · 0500959394' : "Makkah Al-Ka'kiyah · 0500959394"}
-        </p>
-      </motion.div>
+      {/* hero card */}
+      <div className="px-4 pt-5">
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-3xl px-6 py-7 text-center shadow-red"
+          style={{ background: 'linear-gradient(135deg,#E10600 0%,#FF5A1F 55%,#F5A623 130%)' }}
+        >
+          <div
+            className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full"
+            style={{ background: 'radial-gradient(circle,rgba(255,255,255,0.28),transparent 65%)' }}
+          />
+          <div className="mb-1 animate-floaty text-[44px]">🍗</div>
+          <h2 className="text-2xl font-black text-white drop-shadow">
+            {isAr ? 'اختر طلبك' : 'Choose Your Order'}
+          </h2>
+          <p className="mt-1 text-[13px] font-bold text-white/90">
+            {isAr ? 'مكة المكرمة - الكعكية · 0500959394' : "Makkah Al-Ka'kiyah · 0500959394"}
+          </p>
+        </motion.div>
+      </div>
 
       {restaurantClosed && (
-        <div className="bg-brand-red/15 py-2 text-center text-[13px] font-bold text-brand-red">
+        <div className="mx-4 mt-3 rounded-2xl bg-brand-red/10 py-2.5 text-center text-[13px] font-black text-brand-red">
           ⛔ {isAr ? 'المطعم مغلق حالياً' : 'Restaurant is currently closed'}
         </div>
       )}
 
       {/* category tabs */}
-      <div className="sticky top-[62px] z-20 overflow-x-auto border-b border-[#2a0000] bg-black/60 backdrop-blur">
-        <div className="flex min-w-max px-3">
-          {cats.map((c) => (
-            <button
-              key={c}
-              onClick={() => setActive(c)}
-              className="relative whitespace-nowrap px-3 py-3 text-xs font-semibold transition-colors"
-              style={{ color: active === c ? '#FFD400' : '#666' }}
-            >
-              {c}
-              {active === c && (
-                <motion.div
-                  layoutId="cat-underline"
-                  className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand-gold"
-                />
-              )}
-            </button>
-          ))}
+      <div className="sticky top-[62px] z-20 mt-4 overflow-x-auto bg-brand-cream/85 backdrop-blur">
+        <div className="flex min-w-max gap-2 px-4 py-3">
+          {cats.map((c) => {
+            const on = active === c;
+            return (
+              <button
+                key={c}
+                onClick={() => setActive(c)}
+                className="relative whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-black transition"
+                style={{
+                  color: on ? '#fff' : '#8C7A64',
+                  background: on ? '#E10600' : '#FFFFFF',
+                  boxShadow: on ? '0 8px 20px rgba(225,6,0,0.30)' : '0 2px 8px rgba(180,60,0,0.06)',
+                }}
+              >
+                {c}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* grid */}
-      <main
-        className="mx-auto max-w-[960px] px-3.5 pt-5"
-        style={{ paddingBottom: count > 0 ? 110 : 30 }}
-      >
+      <main className="mx-auto max-w-[960px] px-4 pt-4" style={{ paddingBottom: count > 0 ? 120 : 30 }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={active}
             variants={stagger}
             initial="initial"
             animate="animate"
-            className="grid gap-3"
+            className="grid gap-3.5"
             style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}
           >
             {menu[active].map((it) => (
@@ -136,36 +137,38 @@ export default function MenuStep({
                 variants={itemVar}
                 whileHover={it.available ? { y: -6 } : undefined}
                 className="card-surface grad-ring relative flex flex-col gap-2 p-4"
-                style={{ opacity: it.available ? 1 : 0.45 }}
+                style={{ opacity: it.available ? 1 : 0.55 }}
               >
                 {!it.available && (
-                  <div className="absolute inset-0 z-[2] flex items-center justify-center rounded-[20px] bg-black/50">
-                    <span className="rounded-full bg-brand-red px-3.5 py-1 text-xs font-extrabold text-white">
+                  <div className="absolute inset-0 z-[2] flex items-center justify-center rounded-3xl bg-white/60 backdrop-blur-[1px]">
+                    <span className="rounded-full bg-brand-ink px-3.5 py-1 text-xs font-black text-white">
                       {isAr ? 'غير متاح' : 'Unavailable'}
                     </span>
                   </div>
                 )}
                 <div className="flex items-start justify-between">
-                  <span className="text-[30px]">{it.emoji}</span>
-                  <span className="rounded-full border border-[#380000] bg-[#1e0000] px-1.5 py-0.5 text-[10px] font-bold text-brand-red">
+                  <span className="text-[34px] leading-none">{it.emoji}</span>
+                  <span className="rounded-full bg-brand-gold/15 px-2 py-0.5 text-[10px] font-black text-brand-goldDeep">
                     {it.cal}
                   </span>
                 </div>
                 <div className="flex-1">
-                  <div className="text-[13px] font-bold leading-tight text-white">
+                  <div className="text-[14px] font-black leading-tight text-brand-ink">
                     {isAr ? it.nameAr : it.name}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-[#555]">{isAr ? it.name : it.nameAr}</div>
+                  <div className="mt-0.5 text-[11px] font-semibold text-brand-muted">
+                    {isAr ? it.name : it.nameAr}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[17px] font-extrabold text-brand-gold">{money(it.price)}</span>
+                  <span className="text-[19px] font-black text-brand-red">{money(it.price)}</span>
                   {it.available &&
                     (cart[it.id] ? (
                       <div className="flex items-center gap-2">
                         <motion.button
                           whileTap={{ scale: 0.85 }}
                           onClick={() => remove(it.id)}
-                          className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] bg-[#2a0000] text-[17px] font-extrabold text-[#ccc]"
+                          className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-cream2 text-lg font-black text-brand-ink"
                         >
                           −
                         </motion.button>
@@ -173,14 +176,14 @@ export default function MenuStep({
                           key={cart[it.id].qty}
                           initial={{ scale: 1.4 }}
                           animate={{ scale: 1 }}
-                          className="min-w-4 text-center font-extrabold"
+                          className="min-w-4 text-center font-black text-brand-ink"
                         >
                           {cart[it.id].qty}
                         </motion.span>
                         <motion.button
                           whileTap={{ scale: 0.85 }}
                           onClick={() => add(it)}
-                          className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] bg-brand-red text-[17px] font-extrabold text-white"
+                          className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-red text-lg font-black text-white shadow-red"
                         >
                           +
                         </motion.button>
@@ -188,9 +191,9 @@ export default function MenuStep({
                     ) : (
                       <motion.button
                         whileTap={{ scale: 0.92 }}
+                        whileHover={{ y: -1 }}
                         onClick={() => onAddClick(it)}
-                        className="rounded-lg border border-[#3a0000] bg-[#1a0000] px-3.5 py-1.5 text-xs font-semibold text-[#aaa] transition hover:border-transparent hover:text-white"
-                        style={{ backgroundImage: 'none' }}
+                        className="rounded-xl border-2 border-brand-red bg-white px-4 py-1.5 text-xs font-black text-brand-red transition hover:bg-brand-red hover:text-white"
                       >
                         {isAr ? 'أضف' : 'Add'}
                       </motion.button>
@@ -202,33 +205,31 @@ export default function MenuStep({
         </AnimatePresence>
       </main>
 
-      <AnimatePresence>{variantItem && (
-        <VariantSheet
-          item={variantItem}
-          isAr={isAr}
-          onClose={() => setVariantItem(null)}
-          onAdd={add}
-        />
-      )}</AnimatePresence>
+      <AnimatePresence>
+        {variantItem && (
+          <VariantSheet
+            item={variantItem}
+            isAr={isAr}
+            onClose={() => setVariantItem(null)}
+            onAdd={add}
+          />
+        )}
+      </AnimatePresence>
 
       {/* floating cart bar */}
       <AnimatePresence>
         {count > 0 && (
           <motion.div
-            initial={{ y: 120 }}
+            initial={{ y: 130 }}
             animate={{ y: 0 }}
-            exit={{ y: 120 }}
+            exit={{ y: 130 }}
             transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-            className="sheen fixed inset-x-0 bottom-0 z-[100] border-t-[3px] border-brand-gold px-5 py-3.5"
-            style={{
-              background: 'linear-gradient(135deg,#cc0000,#990000)',
-              boxShadow: '0 -10px 34px rgba(214,0,0,.35)',
-            }}
+            className="fixed inset-x-0 bottom-0 z-[100] px-4 pb-4"
           >
-            <div className="mx-auto flex max-w-[960px] items-center justify-between">
+            <div className="mx-auto flex max-w-[600px] items-center justify-between rounded-3xl bg-white px-5 py-3.5 shadow-[0_-6px_30px_rgba(180,60,0,0.16),0_10px_30px_rgba(180,60,0,0.16)] ring-1 ring-brand-line">
               <div>
-                <div className="text-lg font-extrabold text-brand-gold">{money(total)}</div>
-                <div className="text-xs text-white/70">
+                <div className="text-xl font-black text-brand-red">{money(total)}</div>
+                <div className="text-xs font-bold text-brand-muted">
                   {count} {isAr ? 'عنصر' : 'item(s)'}
                 </div>
               </div>
@@ -236,7 +237,7 @@ export default function MenuStep({
                 whileHover={{ y: -2 }}
                 whileTap={{ scale: 0.96 }}
                 onClick={onCheckout}
-                className="rounded-xl bg-brand-gold px-6 py-3 text-[15px] font-extrabold text-black shadow-gold"
+                className="sheen rounded-2xl bg-brand-red px-6 py-3.5 text-[15px] font-black text-white shadow-red"
               >
                 {isAr ? 'المتابعة للدفع →' : 'Proceed to Checkout →'}
               </motion.button>

@@ -62,7 +62,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
-      className="fixed inset-0 z-[500] flex items-center justify-center bg-black/90 p-4"
+      className="fixed inset-0 z-[500] flex items-center justify-center bg-brand-ink/50 p-4 backdrop-blur-sm"
     >
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
@@ -71,9 +71,9 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
         className="max-h-[90vh] w-full max-w-[380px] overflow-y-auto rounded-2xl bg-white font-display text-black"
       >
         <div className="rounded-t-2xl bg-brand-red px-5 pb-4 pt-5 text-center">
-          <div className="text-xl font-black tracking-wide text-brand-gold">BROAST ALBAHR</div>
-          <div className="mt-0.5 font-arabic text-[13px] text-white/85">بروست البحر</div>
-          <div className="mt-1 text-[11px] text-white/65">{order.branchObj.nameEn}</div>
+          <div className="text-xl font-black tracking-wide text-white">BROAST ALBAHR</div>
+          <div className="mt-0.5 font-arabic text-[13px] text-white/90">بروست البحر</div>
+          <div className="mt-1 text-[11px] text-white/75">{order.branchObj.nameEn}</div>
         </div>
         <div className="px-5 py-4">
           <div className="mb-3.5 border-b border-dashed border-gray-300 pb-3.5 text-center">
