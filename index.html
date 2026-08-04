@@ -415,7 +415,7 @@ function VariantPopup({ item, isAr, onClose, onAdd }) {
                 isAr ? "أضف للسلة" : "Add to Cart")));
 }
 
-function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, restaurantClosed }) {
+function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, restaurantClosed, branchObj }) {
     const [activeCategory, setActiveCategory] = React.useState(Object.keys(menu)[0]);
     const [variantItem, setVariantItem] = React.useState(null);
     const hasVariants = (item) => /Normal.*Spicy|Spicy.*Normal|With Cheese|مع جن|عادي.*حراق|حراق.*عادي|Green Pepper|فلفل/i.test(item.nameAr + item.name);
@@ -444,7 +444,9 @@ function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, 
         React.createElement("div", { style: { background: "linear-gradient(135deg, #cc0000 0%, #880000 60%, #130000 100%)", padding: "24px 20px 18px", textAlign: "center", borderBottom: "1px solid #330000" } },
             React.createElement("div", { style: { fontSize: 40, marginBottom: 4 } }, "\uD83C\uDF57"),
             React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, color: "#ffdd00" } }, isAr ? "اختر طلبك" : "Choose Your Order"),
-            React.createElement("p", { style: { color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 4 } }, isAr ? "مكة المكرمة - الكعكية · 0500959394" : "Makkah Al-Ka'kiyah · 0500959394")),
+            React.createElement("p", { style: { color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 4 } }, branchObj ? (isAr ? branchObj.nameAr : branchObj.nameEn) : (isAr ? "بروست البحر" : "Broast Albahr"))),
+        restaurantClosed && React.createElement("div", { style: { background: "#3a0000", borderBottom: "1px solid #660000", padding: "12px 20px", textAlign: "center", color: "#ff6b6b", fontWeight: 700, fontSize: 13 } },
+            isAr ? "🔴 هذا الفرع مغلق حالياً — لا يمكن استقبال الطلبات الآن" : "🔴 This branch is closed right now — orders are paused"),
         React.createElement("div", { style: { background: "#0a0000", borderBottom: "1px solid #2a0000", overflowX: "auto" } },
             React.createElement("div", { style: { display: "flex", padding: "0 12px", minWidth: "max-content" } }, Object.keys(menu).map(cat => (React.createElement("button", { key: cat, className: "cat-btn", onClick: () => setActiveCategory(cat), style: { background: "none", border: "none", padding: "12px 12px", fontFamily: isAr ? "Cairo" : "Syne", fontWeight: 600, fontSize: 12, color: activeCategory === cat ? "#ffdd00" : "#555", borderBottom: activeCategory === cat ? "2px solid #ffdd00" : "2px solid transparent", whiteSpace: "nowrap" } }, cat))))),
         React.createElement("main", { style: { maxWidth: 960, margin: "0 auto", padding: "18px 14px", paddingBottom: itemCount > 0 ? 110 : 30 } },
@@ -476,7 +478,7 @@ function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, 
                         itemCount,
                         " ",
                         isAr ? "عنصر" : "item(s)")),
-                React.createElement("button", { onClick: onCheckout, style: { background: "#ffdd00", border: "none", color: "#000", padding: "12px 24px", borderRadius: 12, cursor: "pointer", fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 15 } }, isAr ? "المتابعة للدفع →" : "Proceed to Checkout →"))))));
+                React.createElement("button", { onClick: restaurantClosed ? undefined : onCheckout, disabled: restaurantClosed, style: { background: restaurantClosed ? "#555" : "#ffdd00", border: "none", color: restaurantClosed ? "#aaa" : "#000", padding: "12px 24px", borderRadius: 12, cursor: restaurantClosed ? "not-allowed" : "pointer", fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 15 } }, restaurantClosed ? (isAr ? "الفرع مغلق" : "Branch Closed") : (isAr ? "المتابعة للدفع →" : "Proceed to Checkout →")))))));
 }
 // ─── STEP 3: CHECKOUT ─────────────────────────────────────────────────────────
 function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }) {
@@ -1059,6 +1061,7 @@ function App() {
     });
     const [menu, setMenu] = React.useState(defaultMenu);
     const [branch, setBranch] = React.useState(""); // customer picks a branch first, each visit
+    const [branchClosed, setBranchClosed] = React.useState(false);
     const [cart, setCart] = React.useState({});
     const [lang, setLang] = React.useState("ar");
     const [view, setView] = React.useState("app"); // app | admin
@@ -1084,8 +1087,8 @@ function App() {
     }, []);
     // Load the selected branch's own menu (falls back to shared/default until the owner seeds it)
     React.useEffect(() => {
-        if (!branch) return;
-        let unsub; let cancelled = false;
+        if (!branch) { setBranchClosed(false); return; }
+        let unsub, unsubS; let cancelled = false;
         (async () => {
             try {
                 if (!window.FB) return;
@@ -1093,9 +1096,12 @@ function App() {
                 if (!m) m = await window.FB.getMenu();
                 if (m && !cancelled) setMenu(m);
                 unsub = window.FB.onBranchMenuChange(branch, (mm) => { if (mm && !cancelled) setMenu(mm); });
-            } catch (e) { console.log("branch menu load:", e); }
+                const bset = await window.FB.getBranchSettings(branch);
+                if (!cancelled && bset) setBranchClosed(bset.isOpen === false);
+                unsubS = window.FB.onBranchSettingsChange(branch, (s) => { if (!cancelled) setBranchClosed(s.isOpen === false); });
+            } catch (e) { console.log("branch load:", e); }
         })();
-        return () => { cancelled = true; if (unsub) unsub(); };
+        return () => { cancelled = true; if (unsub) unsub(); if (unsubS) unsubS(); };
     }, [branch]);
     const updateMenu = (newMenu) => {
         var _a;
@@ -1130,7 +1136,7 @@ function App() {
                 React.createElement("div", { style: { fontSize: 12, color: "#bbb", fontWeight: 700 } }, "🏪 " + (isAr ? (window.BRANCHES.find(x=>x.id===branch)||{}).nameAr : (window.BRANCHES.find(x=>x.id===branch)||{}).nameEn)),
                 React.createElement("button", { onClick: () => { setBranch(""); setCart({}); }, style: { background: "rgba(255,221,0,0.1)", border: "1px solid rgba(255,221,0,0.3)", color: "#ffdd00", padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 11, fontWeight: 700 } }, isAr ? "تغيير الفرع" : "Change branch")
             ),
-            React.createElement(MenuStep, { menu: menu, cart: cart, setCart: setCart, user: user, isAr: isAr, lang: lang, setLang: setLang, onCheckout: () => setStep(2) })
+            React.createElement(MenuStep, { menu: menu, cart: cart, setCart: setCart, user: user, isAr: isAr, lang: lang, setLang: setLang, onCheckout: () => setStep(2), restaurantClosed: restaurantClosed || branchClosed, branchObj: window.BRANCHES.find(x=>x.id===branch) })
         )),
         step === 2 && (React.createElement(CheckoutStep, { cart: cart, user: user, isAr: isAr, branch: branch, onBack: () => setStep(1), onOrderPlaced: (orderData) => {
                 var _a;
@@ -1375,6 +1381,8 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr, branch: initialB
         // Per-branch menus: each branch reads its own independent menu doc (settings/menu_<branch>)
         getBranchMenu: async function(b){ try{ var s=await getDoc(doc(_db,"settings","menu_"+b)); return s.exists()?s.data().menu:null; }catch(e){ return null; } },
         onBranchMenuChange: function(b,cb){ return onSnapshot(doc(_db,"settings","menu_"+b),function(s){ if(s.exists())cb(s.data().menu); }); },
+        getBranchSettings: async function(b){ try{ var s=await getDoc(doc(_db,"settings","branch_"+b)); return s.exists()?s.data():null; }catch(e){ return null; } },
+        onBranchSettingsChange: function(b,cb){ return onSnapshot(doc(_db,"settings","branch_"+b),function(s){ if(s.exists())cb(s.data()); }); },
         getSettings: async function(){ try{ var s=await getDoc(doc(_db,"settings","restaurant")); return s.exists()?s.data():{isOpen:true}; }catch(e){ return {isOpen:true}; } },
         saveSettings: async function(d){ try{ await setDoc(doc(_db,"settings","restaurant"),Object.assign({},d,{updatedAt:serverTimestamp()})); }catch(e){} },
         saveOrder: async function(o){ try{ await addDoc(collection(_db,"orders"),Object.assign({},o,{createdAt:serverTimestamp(),status:"new"})); }catch(e){} },
