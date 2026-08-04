@@ -24,9 +24,9 @@ export default {
         },
       },
       fontFamily: {
-        display: ["'Unbounded'", 'system-ui', 'sans-serif'],
-        sans: ["'Plus Jakarta Sans'", 'system-ui', 'sans-serif'],
-        arabic: ["'Baloo Bhaijaan 2'", 'system-ui', 'sans-serif'],
+        display: ["'Anton'", 'system-ui', 'sans-serif'],
+        sans: ["'Space Grotesk'", 'system-ui', 'sans-serif'],
+        arabic: ["'Changa'", 'system-ui', 'sans-serif'],
       },
       boxShadow: {
         soft: '0 8px 30px rgba(180,60,0,0.08)',
