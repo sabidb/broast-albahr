@@ -10,6 +10,7 @@ import {
   collection,
   onSnapshot,
   getDocs,
+  updateDoc,
   serverTimestamp,
   increment,
   type Firestore,
@@ -126,6 +127,27 @@ export const FB = {
     } catch {
       return noop;
     }
+  },
+
+  /** Live stream of orders (newest first) for the admin panel. */
+  onOrdersChange(cb: (orders: any[]) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(collection(db, 'orders'), (s) => {
+        const o = s.docs.map((d) => ({ fbId: d.id, ...d.data() }));
+        o.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        cb(o);
+      });
+    } catch {
+      return noop;
+    }
+  },
+
+  async updateOrderStatus(fbId: string, status: string) {
+    if (!db) return;
+    try {
+      await updateDoc(doc(db, 'orders', fbId), { status, updatedAt: serverTimestamp() });
+    } catch {}
   },
 
   onSettingsChange(cb: (s: { isOpen: boolean }) => void): Unsub {

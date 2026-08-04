@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ADMIN_PASSWORD, type Menu, type MenuItem } from '../lib/data';
-import { money } from '../lib/utils';
+import { money, formatDate } from '../lib/utils';
 import { FB } from '../lib/fb';
 import ItemImage from './ItemImage';
 
@@ -36,14 +36,46 @@ interface Props {
 type Editing = { item: MenuItem; category: string; isNew: boolean } | null;
 
 export default function AdminPanel({ menu, isOpen, onToggleOpen, onSave, onExit }: Props) {
+  const [tab, setTab] = useState<'menu' | 'orders'>('menu');
   const [saved, setSaved] = useState(false);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Editing>(null);
+  const [orders, setOrders] = useState<any[]>([]);
   const all = Object.values(menu).flat();
   const available = all.filter((i) => i.available).length;
   const q = query.trim().toLowerCase();
 
+  useEffect(() => FB.onOrdersChange(setOrders), []);
+  const activeOrders = orders.filter((o) => o.status !== 'done').length;
+
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1600); };
+
+  // ── category management ──
+  const addCategory = () => {
+    const name = window.prompt('New category name (add an emoji if you like, e.g. "🥗 Salads"):', '');
+    if (!name || !name.trim() || menu[name.trim()]) return;
+    onSave({ ...menu, [name.trim()]: [] });
+    flash();
+  };
+  const renameCategory = (oldName: string) => {
+    const name = window.prompt('Rename category:', oldName);
+    if (!name || !name.trim() || (name.trim() !== oldName && menu[name.trim()])) return;
+    const out: Menu = {};
+    for (const [c, items] of Object.entries(menu)) out[c === oldName ? name.trim() : c] = items;
+    onSave(out);
+    flash();
+  };
+  const deleteCategory = (cat: string) => {
+    if (!confirm(`Delete category "${cat}" and all its items?`)) return;
+    const out: Menu = {};
+    for (const [c, items] of Object.entries(menu)) if (c !== cat) out[c] = items;
+    onSave(out);
+    flash();
+  };
+  const setStatus = (o: any, status: string) => {
+    if (o.fbId) FB.updateOrderStatus(o.fbId, status);
+    setOrders((prev) => prev.map((x) => (x.fbId === o.fbId ? { ...x, status } : x)));
+  };
 
   const toggle = (id: string | number) => {
     const out: Menu = {};
@@ -84,8 +116,27 @@ export default function AdminPanel({ menu, isOpen, onToggleOpen, onSave, onExit 
           </div>
           <button onClick={onExit} className="rounded-full bg-white/20 px-4 py-2 text-[13px] font-black text-white">← Back</button>
         </div>
+        {/* tabs */}
+        <div className="mx-auto flex max-w-[900px] gap-1 px-4 pb-2">
+          {(['menu', 'orders'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className="relative rounded-full px-4 py-1.5 text-[13px] font-black"
+              style={{ color: tab === t ? '#E10600' : 'rgba(255,255,255,0.85)', background: tab === t ? '#fff' : 'rgba(255,255,255,0.15)' }}
+            >
+              {t === 'menu' ? '🍔 Menu' : '🧾 Orders'}
+              {t === 'orders' && activeOrders > 0 && (
+                <span className="ms-1 rounded-full bg-brand-gold px-1.5 text-[10px] text-brand-ink">{activeOrders}</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {tab === 'orders' ? (
+        <OrdersManage orders={orders} setStatus={setStatus} />
+      ) : (
       <div className="mx-auto max-w-[900px] px-4 py-6">
         {/* open / closed master switch */}
         <div className="mb-4 flex items-center justify-between rounded-3xl bg-white p-4 shadow-soft ring-1 ring-brand-line">
@@ -132,7 +183,11 @@ export default function AdminPanel({ menu, isOpen, onToggleOpen, onSave, onExit 
           return (
             <div key={cat} className="mb-6">
               <div className="mb-2 flex items-center justify-between border-b-2 border-brand-line pb-1.5">
-                <div className="text-sm font-black text-brand-red">{cat}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-black text-brand-red">{cat}</div>
+                  <button onClick={() => renameCategory(cat)} className="text-[13px] text-brand-muted" title="Rename">✎</button>
+                  <button onClick={() => deleteCategory(cat)} className="text-[13px] text-brand-muted" title="Delete category">🗑</button>
+                </div>
                 <button onClick={() => addNew(cat)} className="rounded-full bg-brand-red px-3 py-1 text-[11px] font-black text-white shadow-red">+ Add item</button>
               </div>
               <div className="flex flex-col gap-2">
@@ -164,7 +219,13 @@ export default function AdminPanel({ menu, isOpen, onToggleOpen, onSave, onExit 
             </div>
           );
         })}
+        {!q && (
+          <button onClick={addCategory} className="mt-2 w-full rounded-2xl border-2 border-dashed border-brand-line py-3 text-[14px] font-black text-brand-red">
+            + Add category
+          </button>
+        )}
       </div>
+      )}
 
       <AnimatePresence>
         {editing && (
@@ -279,5 +340,88 @@ function ItemEditor({
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+const STATUS: Record<string, { label: string; color: string }> = {
+  new: { label: 'New', color: '#E10600' },
+  preparing: { label: 'Preparing', color: '#DE8A00' },
+  ready: { label: 'Ready', color: '#11845B' },
+  done: { label: 'Done', color: '#8C7A64' },
+};
+const NEXT: Record<string, string> = { new: 'preparing', preparing: 'ready', ready: 'done' };
+const NEXT_LABEL: Record<string, string> = { new: '▶ Start preparing', preparing: '✅ Mark ready', ready: '📦 Complete' };
+
+function OrdersManage({ orders, setStatus }: { orders: any[]; setStatus: (o: any, s: string) => void }) {
+  return (
+    <div className="mx-auto max-w-[900px] px-4 py-6">
+      <div className="mb-4 flex items-center gap-2 text-[13px] font-black text-brand-muted">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-green opacity-60" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand-green" />
+        </span>
+        Live · updates in real time
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="mt-16 text-center">
+          <div className="mb-3 text-6xl">🧾</div>
+          <div className="font-black text-brand-ink">No orders yet</div>
+          <p className="mt-1 text-[13px] font-semibold text-brand-muted">New orders will appear here automatically.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <AnimatePresence initial={false}>
+            {orders.map((o) => {
+              const st = STATUS[o.status] || STATUS.new;
+              const total = o.total ?? o.totals?.total ?? 0;
+              return (
+                <motion.div
+                  key={o.fbId || o.orderNo}
+                  layout
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  className="rounded-3xl bg-white p-4 shadow-soft ring-1 ring-brand-line"
+                  style={{ borderInlineStart: `4px solid ${st.color}` }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[15px] font-black text-brand-ink">#{o.orderNo}</span>
+                    <span className="rounded-full px-2.5 py-1 text-[11px] font-black text-white" style={{ background: st.color }}>
+                      {st.label}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[12px] font-bold text-brand-muted">
+                    {o.userName || '—'} · {o.userPhone || ''} · {o.orderType === 'pickup' ? '🏃 Pickup' : '🛵 Delivery'}
+                    {o.date ? ` · ${formatDate(o.date)}` : ''}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {(o.items || []).map((it: any, k: number) => (
+                      <span key={k} className="flex items-center gap-1 rounded-lg bg-brand-cream px-2 py-1 text-[12px] font-bold text-brand-ink2">
+                        <span className="inline-block h-4 w-4 overflow-hidden rounded">
+                          <ItemImage item={it} iconSize={11} />
+                        </span>
+                        {it.name} ×{it.qty}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-brand-line pt-3">
+                    <span className="text-[16px] font-black text-brand-red">{money(total)}</span>
+                    <div className="flex gap-2">
+                      {NEXT[o.status] && (
+                        <button onClick={() => setStatus(o, NEXT[o.status])} className="rounded-xl bg-brand-red px-3.5 py-2 text-[12px] font-black text-white shadow-red">
+                          {NEXT_LABEL[o.status]}
+                        </button>
+                      )}
+                      {o.status === 'done' && <span className="text-[12px] font-black text-brand-muted">✔ Completed</span>}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
   );
 }
