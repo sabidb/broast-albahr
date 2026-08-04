@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import FoodIcon from './FoodIcon';
+import ItemImage from './ItemImage';
 import { detectKind, piecesOf, accompaniment, kindGradient } from '../lib/items';
 import { money } from '../lib/utils';
 import type { MenuItem } from '../lib/data';
@@ -119,9 +119,9 @@ export default function ItemDetail({
             initial={{ scale: 0.7, rotate: -8, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 220, damping: 16 }}
-            className="mx-auto flex h-40 w-40 items-center justify-center rounded-full bg-white/20 ring-8 ring-white/10"
+            className="mx-auto h-44 w-44 overflow-hidden rounded-[32px] bg-white/20 ring-8 ring-white/10"
           >
-            <FoodIcon kind={kind} size={128} />
+            <ItemImage item={item} category={category} iconSize={128} />
           </motion.div>
           <h2 className="mt-4 text-center text-2xl font-black text-white drop-shadow">{baseName}</h2>
           <div className="mt-2 flex flex-wrap justify-center gap-2">

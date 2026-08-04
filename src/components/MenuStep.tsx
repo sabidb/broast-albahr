@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import MenuCard from './MenuCard';
 import ItemDetail from './ItemDetail';
+import ItemImage from './ItemImage';
 import FoodIcon from './FoodIcon';
 import { stagger, item as itemVar } from './motion';
-import { detectKind, kindGradient } from '../lib/items';
+import { detectKind } from '../lib/items';
 import { money } from '../lib/utils';
 import type { Menu, MenuItem } from '../lib/data';
 
@@ -131,7 +132,6 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
           {rows.length === 0 && <div className="py-10 text-center font-bold text-brand-muted">{isAr ? 'لا نتائج' : 'No results'}</div>}
           {rows.map((it) => {
             const qty = cart[it.id]?.qty;
-            const kind = detectKind(it, catOf(it));
             return (
               <div key={it.id} className="relative overflow-hidden rounded-[24px]">
                 {/* swipe hint background (in-cart only) */}
@@ -156,8 +156,8 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
                   className="relative flex cursor-pointer items-center gap-3 rounded-[24px] bg-white p-3 shadow-soft ring-1 ring-brand-line"
                   style={{ opacity: it.available ? 1 : 0.5 }}
                 >
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px]" style={{ background: kindGradient(kind) }}>
-                    <FoodIcon kind={kind} size={44} />
+                  <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[20px]">
+                    <ItemImage item={it} category={catOf(it)} iconSize={44} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[15px] font-black text-brand-ink">{isAr ? it.nameAr : it.name}</div>

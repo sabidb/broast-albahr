@@ -14,6 +14,7 @@ import {
   increment,
   type Firestore,
 } from 'firebase/firestore';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
 import type { Menu } from './data';
 
 const firebaseConfig = {
@@ -27,11 +28,14 @@ const firebaseConfig = {
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
+let storage: FirebaseStorage | null = null;
 try {
   app = initializeApp(firebaseConfig);
   db = getFirestore(app);
+  storage = getStorage(app);
 } catch {
   db = null;
+  storage = null;
 }
 
 type Unsub = () => void;
@@ -55,6 +59,15 @@ export const FB = {
     try {
       await setDoc(doc(db, 'settings', 'menu'), { menu, updatedAt: serverTimestamp() });
     } catch {}
+  },
+
+  /** Upload a product photo to Firebase Storage, return its download URL. */
+  async uploadItemImage(itemId: string | number, file: File): Promise<string> {
+    if (!storage) throw new Error('storage-unavailable');
+    const safe = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const r = storageRef(storage, `items/${itemId}-${Date.now()}-${safe}`);
+    await uploadBytes(r, file, { contentType: file.type || 'image/jpeg' });
+    return getDownloadURL(r);
   },
 
   async getSettings(): Promise<{ isOpen: boolean }> {

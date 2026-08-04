@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ADMIN_PASSWORD, type Menu } from '../lib/data';
 import { money } from '../lib/utils';
+import { FB } from '../lib/fb';
+import ItemImage from './ItemImage';
 
 export function AdminLogin({ onLogin, onCancel }: { onLogin: () => void; onCancel: () => void }) {
   const [pw, setPw] = useState('');
@@ -60,6 +62,7 @@ export default function AdminPanel({
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editPrice, setEditPrice] = useState('');
   const [saved, setSaved] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | number | null>(null);
   const all = Object.values(menu).flat();
   const available = all.filter((i) => i.available).length;
 
@@ -67,6 +70,29 @@ export default function AdminPanel({
     const out: Menu = {};
     for (const [cat, items] of Object.entries(menu)) out[cat] = items.map((i) => (i.id === id ? fn(i) : i));
     return out;
+  };
+
+  const setImage = (id: string | number, url?: string) => {
+    onSave(patch(id, (i) => ({ ...i, img: url && url.trim() ? url.trim() : undefined })));
+    flash();
+  };
+  const handleFile = async (id: string | number, file: File) => {
+    setUploadingId(id);
+    try {
+      const url = await FB.uploadItemImage(id, file);
+      setImage(id, url);
+    } catch {
+      alert(
+        'Upload failed. Firebase Storage may be disabled or its rules block writes.\n\n' +
+          'Tip: paste an image URL instead (🔗) — e.g. a GitHub raw link.',
+      );
+    } finally {
+      setUploadingId(null);
+    }
+  };
+  const promptUrl = (id: string | number, current?: string) => {
+    const u = window.prompt('Paste image URL (e.g. GitHub raw link). Leave blank to remove:', current || '');
+    if (u !== null) setImage(id, u);
   };
   const toggle = (id: string | number) => {
     onSave(patch(id, (i) => ({ ...i, available: !i.available })));
@@ -140,10 +166,35 @@ export default function AdminPanel({
                   className="flex items-center gap-2.5 rounded-2xl border-2 bg-white px-3.5 py-2.5"
                   style={{ borderColor: it.available ? 'rgba(30,18,6,0.08)' : 'rgba(225,6,0,0.25)', opacity: it.available ? 1 : 0.6 }}
                 >
-                  <span className="shrink-0 text-[24px]">{it.emoji}</span>
+                  <label className="relative h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-xl ring-1 ring-brand-line">
+                    <ItemImage item={it} iconSize={22} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleFile(it.id, f);
+                        e.target.value = '';
+                      }}
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity hover:opacity-100">
+                      {uploadingId === it.id ? '…' : '📷'}
+                    </span>
+                  </label>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-black text-brand-ink">{it.name}</div>
                     <div className="font-arabic text-[11px] font-bold text-brand-muted">{it.nameAr}</div>
+                    <div className="mt-0.5 flex gap-2 text-[10px] font-black">
+                      <button onClick={() => promptUrl(it.id, it.img)} className="text-brand-red">
+                        🔗 URL
+                      </button>
+                      {it.img && (
+                        <button onClick={() => setImage(it.id, undefined)} className="text-brand-muted">
+                          ✕ Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {editingId === it.id ? (
                     <div className="flex items-center gap-1.5">

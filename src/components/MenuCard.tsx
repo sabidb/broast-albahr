@@ -1,8 +1,7 @@
 import { useRef } from 'react';
 import { motion, useMotionValue, useMotionTemplate, useSpring, useTransform } from 'framer-motion';
 import { item as itemVar } from './motion';
-import FoodIcon from './FoodIcon';
-import { detectKind, kindGradient } from '../lib/items';
+import ItemImage from './ItemImage';
 import { money } from '../lib/utils';
 import type { MenuItem } from '../lib/data';
 
@@ -17,7 +16,6 @@ interface Props {
 /** Featured product card: 3D tilt + glare, SVG icon, tap to open details. */
 export default function MenuCard({ item, category = '', isAr, qty, onOpen }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const kind = detectKind(item, category);
   const px = useMotionValue(0);
   const py = useMotionValue(0);
   const spring = { stiffness: 220, damping: 18, mass: 0.4 };
@@ -54,13 +52,10 @@ export default function MenuCard({ item, category = '', isAr, qty, onOpen }: Pro
         className="pointer-events-none absolute inset-0 rounded-[inherit]"
         style={{ background: glareBg, mixBlendMode: 'soft-light', opacity: item.available ? 1 : 0 }}
       />
-      <div
-        className="relative flex h-24 items-center justify-center rounded-[18px]"
-        style={{ background: kindGradient(kind), transform: 'translateZ(24px)' }}
-      >
-        <FoodIcon kind={kind} size={72} />
+      <div className="relative h-24 overflow-hidden rounded-[18px]" style={{ transform: 'translateZ(24px)' }}>
+        <ItemImage item={item} category={category} iconSize={72} />
         <span className="absolute end-2 top-2 rounded-full bg-white/85 px-2 py-0.5 text-[10px] font-black text-brand-ink">
-          🔥 {item.cal}
+          {item.cal}
         </span>
         {!item.available && (
           <span className="absolute inset-x-0 bottom-2 mx-auto w-fit rounded-full bg-brand-ink px-3 py-0.5 text-[10px] font-black text-white">

@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BRANCHES, VALID_COUPONS, PAYMENT_METHODS, PICKUP_SLOTS, type MenuItem } from '../lib/data';
 import { calcDistance, getDeliveryFee, computeTotals, buildWhatsAppMessage, money } from '../lib/utils';
-import FoodIcon from './FoodIcon';
-import { detectKind } from '../lib/items';
+import ItemImage from './ItemImage';
 import type { Cart } from './MenuStep';
 
 interface Props {
@@ -337,7 +336,9 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
             {items.map((i) => (
               <div key={i.id} className="mb-2 flex items-center justify-between text-[13px] font-bold">
                 <span className="flex items-center gap-1.5 text-brand-ink2">
-                  <FoodIcon kind={detectKind(i)} size={20} />
+                  <span className="inline-block h-6 w-6 shrink-0 overflow-hidden rounded-md">
+                    <ItemImage item={i} iconSize={14} />
+                  </span>
                   {isAr ? i.nameAr : i.name} ×{i.qty}
                 </span>
                 <span className="font-black text-brand-red">{money(i.price * (i.qty || 0))}</span>

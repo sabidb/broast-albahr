@@ -9,6 +9,8 @@ export interface MenuItem {
   cal: string;
   available: boolean;
   qty?: number;
+  /** Uploaded product photo URL (Firebase Storage or any URL, e.g. GitHub raw). */
+  img?: string;
 }
 export type Menu = Record<string, MenuItem[]>;
 export interface Branch {
