@@ -9,9 +9,11 @@ import OrderSuccess from './OrderSuccess';
 import RewardsScreen from './RewardsScreen';
 import OrdersScreen from './OrdersScreen';
 import AccountScreen from './AccountScreen';
-import BottomNav, { type Tab } from './BottomNav';
+import NavDrawer from './NavDrawer';
 import AdminPanel, { AdminLogin } from './AdminPanel';
 import StreakModal from './StreakModal';
+
+export type Tab = 'menu' | 'rewards' | 'orders' | 'account';
 import { pageVariants } from './motion';
 import { money } from '../lib/utils';
 import { DEFAULT_MENU, type Menu } from '../lib/data';
@@ -41,6 +43,7 @@ export default function App() {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [restaurantClosed, setRestaurantClosed] = useState(false);
   const [tab, setTab] = useState<Tab>('menu');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [streak, setStreak] = useState<StreakState>(loadStreak);
   const [streakTick, setStreakTick] = useState<StreakTick | null>(null);
@@ -170,32 +173,49 @@ export default function App() {
         style={{ boxShadow: headerShadow, backdropFilter: headerBlur, background: 'rgba(255,246,234,0.82)' }}
       >
         <div className="mx-auto flex h-[62px] max-w-[640px] items-center justify-between px-4">
-          <button onClick={() => setTab('menu')} className="flex items-center gap-2.5">
-            <div style={{ perspective: 500 }}>
-              <motion.div
-                animate={{ rotateY: [0, 360] }}
-                transition={{ duration: 3.2, repeat: Infinity, repeatDelay: 2.6, ease: [0.6, 0, 0.4, 1] }}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl text-[20px] shadow-red"
-                style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)', transformStyle: 'preserve-3d' }}
-              >
-                🍗
-              </motion.div>
-            </div>
-            <div className="text-start leading-none">
-              <div className="font-display text-[13px] font-extrabold tracking-tight text-brand-ink">BROAST AL BAHR</div>
-              <div className="mt-0.5 font-arabic text-[12px] font-extrabold text-brand-red">بروست البحر</div>
-            </div>
-          </button>
-          <button
-            onClick={() => setTab('rewards')}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-white shadow-red"
-            style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
-          >
-            <span className="text-sm">🎁</span>
-            <CountUp value={loyalty.points} className="font-display text-[13px] font-black" />
-            <span className="mx-0.5 opacity-50">·</span>
-            <span className="text-[13px] font-black">🔥{streak.count}</span>
-          </button>
+          <div className="flex items-center gap-2.5">
+            {/* hamburger */}
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setMenuOpen(true)}
+              aria-label="menu"
+              className="flex h-10 w-10 flex-col items-center justify-center gap-[4px] rounded-2xl bg-white shadow-soft"
+            >
+              {[0, 1, 2].map((i) => (
+                <span key={i} className="block h-[2.5px] w-5 rounded bg-brand-ink" />
+              ))}
+            </motion.button>
+            <button onClick={() => setTab('menu')} className="text-start leading-none">
+              <div className="font-display text-[14px] font-extrabold tracking-tight text-brand-ink">BROAST AL BAHR</div>
+              <div className="mt-0.5 font-arabic text-[12px] font-bold text-brand-red">بروست البحر</div>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* My Orders — kept out of the hamburger */}
+            <button
+              onClick={() => setTab('orders')}
+              aria-label="orders"
+              className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg shadow-soft"
+            >
+              🧾
+              {orders.length > 0 && (
+                <span className="absolute -end-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-red px-1 text-[10px] font-black text-white">
+                  {orders.length}
+                </span>
+              )}
+            </button>
+            {/* points + streak */}
+            <button
+              onClick={() => setTab('rewards')}
+              className="flex items-center gap-1.5 rounded-full px-3 py-2 text-white shadow-red"
+              style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
+            >
+              <span className="text-sm">🎁</span>
+              <CountUp value={loyalty.points} className="font-display text-[13px] font-black" />
+              <span className="mx-0.5 opacity-50">·</span>
+              <span className="text-[13px] font-black">🔥{streak.count}</span>
+            </button>
+          </div>
         </div>
       </motion.header>
 
@@ -237,7 +257,7 @@ export default function App() {
             exit={{ y: 90, opacity: 0 }}
             whileTap={{ scale: 0.96 }}
             onClick={() => setCheckoutOpen(true)}
-            className="fixed inset-x-0 bottom-[92px] z-[95] mx-auto flex w-[calc(100%-2rem)] max-w-[420px] items-center justify-between rounded-[22px] px-5 py-3.5 text-white shadow-[0_16px_40px_rgba(225,6,0,0.4)]"
+            className="fixed inset-x-0 bottom-5 z-[95] mx-auto flex w-[calc(100%-2rem)] max-w-[420px] items-center justify-between rounded-[22px] px-5 py-3.5 text-white shadow-[0_16px_40px_rgba(225,6,0,0.4)]"
             style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
           >
             <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/25 px-2 text-[13px] font-black">
@@ -263,7 +283,30 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <BottomNav active={tab} onChange={setTab} isAr={isAr} streak={streak.count} />
+      {/* hamburger drawer */}
+      <AnimatePresence>
+        {menuOpen && (
+          <NavDrawer
+            user={user}
+            loyalty={loyalty}
+            streak={streak}
+            active={tab}
+            isAr={isAr}
+            onNavigate={setTab}
+            onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
+            onAdmin={() => setShowAdminLogin(true)}
+            onLogout={() => {
+              try {
+                localStorage.removeItem('ba_user');
+              } catch {}
+              setUser(null);
+              setCart({});
+              setTab('menu');
+            }}
+            onClose={() => setMenuOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* checkout overlay */}
       <AnimatePresence>
