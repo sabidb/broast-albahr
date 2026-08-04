@@ -83,6 +83,12 @@ export default function VariantSheet({
         animate="animate"
         exit="exit"
         onClick={(e) => e.stopPropagation()}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.7 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 110 || info.velocity.y > 700) onClose();
+        }}
         className="w-full max-w-[480px] rounded-t-[28px] bg-white px-5 pb-9 pt-5 shadow-[0_-20px_50px_rgba(0,0,0,0.18)]"
       >
         <div className="mx-auto mb-5 h-1.5 w-12 rounded-full bg-brand-cream2" />

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
+import CountUp from './CountUp';
 import Splash from './Splash';
 import VerifyStep from './VerifyStep';
 import MenuStep, { type Cart } from './MenuStep';
@@ -127,6 +128,11 @@ export default function App() {
   const cartCount = Object.values(cart).reduce((s, i) => s + (i.qty || 0), 0);
   const cartTotal = Object.values(cart).reduce((s, i) => s + i.price * (i.qty || 0), 0);
 
+  // scroll-reactive header
+  const { scrollY } = useScroll();
+  const headerShadow = useTransform(scrollY, [0, 60], ['0 0 0 rgba(0,0,0,0)', '0 12px 30px rgba(180,60,0,0.14)']);
+  const headerBlur = useTransform(scrollY, [0, 60], ['saturate(1) blur(6px)', 'saturate(1.2) blur(16px)']);
+
   if (splash) {
     return (
       <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
@@ -158,8 +164,11 @@ export default function App() {
 
   return (
     <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
-      {/* slim header */}
-      <header className="glass sticky top-0 z-[80] border-b border-brand-line">
+      {/* slim header — elevates on scroll */}
+      <motion.header
+        className="sticky top-0 z-[80] border-b border-brand-line"
+        style={{ boxShadow: headerShadow, backdropFilter: headerBlur, background: 'rgba(255,246,234,0.82)' }}
+      >
         <div className="mx-auto flex h-[62px] max-w-[640px] items-center justify-between px-4">
           <button onClick={() => setTab('menu')} className="flex items-center gap-2.5">
             <div style={{ perspective: 500 }}>
@@ -183,12 +192,12 @@ export default function App() {
             style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
           >
             <span className="text-sm">🎁</span>
-            <span className="font-display text-[13px] font-black">{loyalty.points}</span>
+            <CountUp value={loyalty.points} className="font-display text-[13px] font-black" />
             <span className="mx-0.5 opacity-50">·</span>
             <span className="text-[13px] font-black">🔥{streak.count}</span>
           </button>
         </div>
-      </header>
+      </motion.header>
 
       {/* tab content */}
       <AnimatePresence mode="wait">
@@ -235,7 +244,7 @@ export default function App() {
               {cartCount}
             </span>
             <span className="font-black">{isAr ? 'عرض السلة' : 'View Cart'}</span>
-            <span className="font-display text-[15px] font-black">{money(cartTotal)}</span>
+            <CountUp value={cartTotal} format={money} className="font-display text-[15px] font-black" />
           </motion.button>
         )}
       </AnimatePresence>

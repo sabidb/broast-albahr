@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import CountUp from './CountUp';
 import {
   REWARDS,
   TIERS,
@@ -62,14 +63,10 @@ export default function RewardsScreen({
         <div className="flex items-center justify-between">
           <div>
             <div className="text-[13px] font-bold opacity-90">{isAr ? 'رصيد نقاطك' : 'Your points'}</div>
-            <motion.div
-              key={loyalty.points}
-              initial={{ scale: 1.2 }}
-              animate={{ scale: 1 }}
-              className="font-display text-[44px] font-black leading-none"
-            >
-              {loyalty.points}
-            </motion.div>
+            <div className="font-display text-[44px] font-black leading-none">
+              <CountUp value={loyalty.points} />
+            </div>
+
             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-1 text-[12px] font-black">
               {tier.emoji} {isAr ? tier.nameAr : tier.name}
             </div>
