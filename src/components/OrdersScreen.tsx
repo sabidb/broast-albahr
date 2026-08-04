@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import { money, formatDate } from '../lib/utils';
+import FoodIcon from './FoodIcon';
+import { detectKind } from '../lib/items';
 import type { Order } from './Invoice';
 
 export default function OrdersScreen({
@@ -48,8 +50,8 @@ export default function OrdersScreen({
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {o.items.slice(0, 5).map((it, k) => (
-                  <span key={k} className="rounded-lg bg-brand-cream px-2 py-1 text-[12px] font-bold text-brand-ink2">
-                    {it.emoji} ×{it.qty}
+                  <span key={k} className="flex items-center gap-1 rounded-lg bg-brand-cream px-2 py-1 text-[12px] font-bold text-brand-ink2">
+                    <FoodIcon kind={detectKind(it)} size={16} /> ×{it.qty}
                   </span>
                 ))}
               </div>

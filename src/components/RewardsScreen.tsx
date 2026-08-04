@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import CountUp from './CountUp';
 import {
   REWARDS,
@@ -50,16 +50,22 @@ export default function RewardsScreen({
   const pct = tierProgress(loyalty.lifetime);
   const flames = weekFlames(streak.count);
 
+  // parallax on scroll
+  const { scrollY } = useScroll();
+  const decoY = useTransform(scrollY, [0, 320], [0, -70]);
+  const deco2Y = useTransform(scrollY, [0, 320], [0, 50]);
+
   return (
     <div className="mx-auto max-w-[560px] px-4 pb-32 pt-4">
-      {/* points hero */}
+      {/* points hero — parallax */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         className="relative overflow-hidden rounded-[28px] p-6 text-white shadow-[0_18px_40px_rgba(225,6,0,0.28)]"
         style={{ background: 'linear-gradient(140deg,#E10600,#FF5A1F 70%,#F5A623)' }}
       >
-        <div className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-white/20" />
+        <motion.div style={{ y: decoY }} className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-white/20" />
+        <motion.div style={{ y: deco2Y }} className="pointer-events-none absolute -left-8 bottom-[-40px] h-28 w-28 rounded-full bg-white/10" />
         <div className="flex items-center justify-between">
           <div>
             <div className="text-[13px] font-bold opacity-90">{isAr ? 'رصيد نقاطك' : 'Your points'}</div>
