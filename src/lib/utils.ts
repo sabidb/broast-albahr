@@ -84,7 +84,7 @@ export function buildWhatsAppMessage(o: OrderPayload): string {
   const nl = '\n';
   const t = o.totals;
   const lines = [
-    '🍗 NEW ORDER · Broast Albahr',
+    '🍗 NEW ORDER · Broast Al Bahr',
     '━━━━━━━━━━━━━━━━━━━━',
     `Branch: ${o.branchObj.nameEn}`,
     `Customer: ${o.user.name} | ${o.user.phone}`,

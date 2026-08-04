@@ -1,4 +1,4 @@
-// ── Core data & config, ported from the legacy Broast Albahr app ──
+// ── Core data & config, ported from the legacy Broast Al Bahr app ──
 
 export interface MenuItem {
   id: number | string;

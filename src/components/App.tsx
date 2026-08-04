@@ -116,14 +116,21 @@ export default function App() {
       <header className="glass sticky top-0 z-[100] border-b border-brand-line">
         <div className="mx-auto flex h-[64px] max-w-[960px] items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <div
-              className="flex h-11 w-11 animate-floaty items-center justify-center rounded-2xl text-[22px] shadow-red"
-              style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
-            >
-              🍗
+            <div style={{ perspective: 500 }}>
+              <motion.div
+                animate={{ rotateY: [0, 360], y: [0, -3, 0] }}
+                transition={{
+                  rotateY: { duration: 3.2, repeat: Infinity, repeatDelay: 2.4, ease: [0.6, 0, 0.4, 1] },
+                  y: { duration: 3, repeat: Infinity, ease: 'easeInOut' },
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[22px] shadow-red"
+                style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)', transformStyle: 'preserve-3d' }}
+              >
+                🍗
+              </motion.div>
             </div>
             <div className="leading-none">
-              <div className="font-display text-[15px] font-extrabold tracking-tight text-brand-ink">BROAST ALBAHR</div>
+              <div className="font-display text-[15px] font-extrabold tracking-tight text-brand-ink">BROAST AL BAHR</div>
               <div className="mt-1 font-arabic text-[13px] font-extrabold text-brand-red">بروست البحر</div>
             </div>
           </div>

@@ -3,11 +3,11 @@ import type { Variants, Transition } from 'framer-motion';
 export const easeOut: Transition = { type: 'spring', stiffness: 260, damping: 26 };
 export const soft: Transition = { duration: 0.45, ease: [0.22, 0.9, 0.28, 1] };
 
-/** Step/page transitions (menu ↔ checkout ↔ success). */
+/** Step/page transitions (menu ↔ checkout ↔ success) with a 3D depth flip. */
 export const pageVariants: Variants = {
-  initial: { opacity: 0, y: 24 },
-  animate: { opacity: 1, y: 0, transition: soft },
-  exit: { opacity: 0, y: -18, transition: { duration: 0.25 } },
+  initial: { opacity: 0, y: 28, rotateX: 10, transformPerspective: 1200 },
+  animate: { opacity: 1, y: 0, rotateX: 0, transformPerspective: 1200, transition: soft },
+  exit: { opacity: 0, y: -20, rotateX: -8, transformPerspective: 1200, transition: { duration: 0.25 } },
 };
 
 /** Container that staggers its children in. */

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import VariantSheet from './VariantSheet';
-import { stagger, item as itemVar } from './motion';
+import MenuCard from './MenuCard';
+import { stagger } from './motion';
 import { money } from '../lib/utils';
 import type { Menu, MenuItem } from '../lib/data';
 
@@ -129,77 +130,18 @@ export default function MenuStep({
             initial="initial"
             animate="animate"
             className="grid gap-3.5"
-            style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}
+            style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', perspective: 1000 }}
           >
             {menu[active].map((it) => (
-              <motion.div
+              <MenuCard
                 key={it.id}
-                variants={itemVar}
-                whileHover={it.available ? { y: -6 } : undefined}
-                className="card-surface grad-ring relative flex flex-col gap-2 p-4"
-                style={{ opacity: it.available ? 1 : 0.55 }}
-              >
-                {!it.available && (
-                  <div className="absolute inset-0 z-[2] flex items-center justify-center rounded-3xl bg-white/60 backdrop-blur-[1px]">
-                    <span className="rounded-full bg-brand-ink px-3.5 py-1 text-xs font-black text-white">
-                      {isAr ? 'غير متاح' : 'Unavailable'}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-start justify-between">
-                  <span className="text-[34px] leading-none">{it.emoji}</span>
-                  <span className="rounded-full bg-brand-gold/15 px-2 py-0.5 text-[10px] font-black text-brand-goldDeep">
-                    {it.cal}
-                  </span>
-                </div>
-                <div className="flex-1">
-                  <div className="text-[14px] font-black leading-tight text-brand-ink">
-                    {isAr ? it.nameAr : it.name}
-                  </div>
-                  <div className="mt-0.5 text-[11px] font-semibold text-brand-muted">
-                    {isAr ? it.name : it.nameAr}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[19px] font-black text-brand-red">{money(it.price)}</span>
-                  {it.available &&
-                    (cart[it.id] ? (
-                      <div className="flex items-center gap-2">
-                        <motion.button
-                          whileTap={{ scale: 0.85 }}
-                          onClick={() => remove(it.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-cream2 text-lg font-black text-brand-ink"
-                        >
-                          −
-                        </motion.button>
-                        <motion.span
-                          key={cart[it.id].qty}
-                          initial={{ scale: 1.4 }}
-                          animate={{ scale: 1 }}
-                          className="min-w-4 text-center font-black text-brand-ink"
-                        >
-                          {cart[it.id].qty}
-                        </motion.span>
-                        <motion.button
-                          whileTap={{ scale: 0.85 }}
-                          onClick={() => add(it)}
-                          className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-red text-lg font-black text-white shadow-red"
-                        >
-                          +
-                        </motion.button>
-                      </div>
-                    ) : (
-                      <motion.button
-                        whileTap={{ scale: 0.92 }}
-                        whileHover={{ y: -1 }}
-                        onClick={() => onAddClick(it)}
-                        className="rounded-xl border-2 border-brand-red bg-white px-4 py-1.5 text-xs font-black text-brand-red transition hover:bg-brand-red hover:text-white"
-                      >
-                        {isAr ? 'أضف' : 'Add'}
-                      </motion.button>
-                    ))}
-                </div>
-              </motion.div>
+                item={it}
+                isAr={isAr}
+                qty={cart[it.id]?.qty}
+                onAdd={add}
+                onRemove={remove}
+                onAddClick={onAddClick}
+              />
             ))}
           </motion.div>
         </AnimatePresence>

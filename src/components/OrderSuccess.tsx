@@ -33,14 +33,20 @@ export default function OrderSuccess({
         </motion.span>
       ))}
 
-      <motion.div
-        initial={{ scale: 0, rotate: -30 }}
-        animate={{ scale: 1, rotate: 0 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 14 }}
-        className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full bg-white text-[56px] shadow-card"
-      >
-        🎉
-      </motion.div>
+      <div className="mx-auto mb-5" style={{ perspective: 600, width: 96 }}>
+        <motion.div
+          initial={{ scale: 0, rotateY: -180 }}
+          animate={{ scale: 1, rotateY: [0, 360] }}
+          transition={{
+            scale: { type: 'spring', stiffness: 260, damping: 14 },
+            rotateY: { duration: 2.6, repeat: Infinity, repeatDelay: 1.6, ease: [0.5, 0, 0.4, 1], delay: 0.4 },
+          }}
+          className="flex h-24 w-24 items-center justify-center rounded-full bg-white text-[56px] shadow-card"
+          style={{ transformStyle: 'preserve-3d' }}
+        >
+          🎉
+        </motion.div>
+      </div>
       <h2 className="mb-2.5 text-3xl font-black text-brand-ink">{isAr ? 'تم إرسال طلبك!' : 'Order Sent!'}</h2>
       <p className="mb-6 text-sm font-semibold leading-relaxed text-brand-muted">
         {isAr

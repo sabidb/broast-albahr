@@ -34,7 +34,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       .row{display:flex;justify-content:space-between;margin:5px 0;font-size:13px}
       .row.total{font-size:17px;font-weight:900;border-top:2px solid #000;padding-top:8px;margin-top:8px}
       .footer{text-align:center;margin-top:16px;font-size:11px;color:#999}</style></head><body>
-      <div class="center logo"><h2>BROAST ALBAHR · بروست البحر</h2><p>${order.branchObj.nameEn}</p></div>
+      <div class="center logo"><h2>BROAST AL BAHR · بروست البحر</h2><p>${order.branchObj.nameEn}</p></div>
       <div class="center"><div style="font-size:11px;color:#999">ORDER</div>
       <div style="font-size:20px;font-weight:900">#${order.orderNo}</div>
       <div style="font-size:11px;color:#666">${formatDate(order.date)}</div></div>
@@ -71,7 +71,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
         className="max-h-[90vh] w-full max-w-[380px] overflow-y-auto rounded-2xl bg-white font-sans text-black"
       >
         <div className="rounded-t-2xl bg-brand-red px-5 pb-4 pt-5 text-center">
-          <div className="font-display text-lg font-extrabold tracking-tight text-white">BROAST ALBAHR</div>
+          <div className="font-display text-lg font-extrabold tracking-tight text-white">BROAST AL BAHR</div>
           <div className="mt-0.5 font-arabic text-[13px] text-white/90">بروست البحر</div>
           <div className="mt-1 text-[11px] text-white/75">{order.branchObj.nameEn}</div>
         </div>

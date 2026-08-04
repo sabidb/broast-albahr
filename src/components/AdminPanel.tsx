@@ -92,7 +92,7 @@ export default function AdminPanel({
             <span className="text-[22px]">⚙️</span>
             <div>
               <div className="text-base font-black text-white">ADMIN PANEL</div>
-              <div className="text-[11px] font-bold text-white/80">Broast Albahr Management</div>
+              <div className="text-[11px] font-bold text-white/80">Broast Al Bahr Management</div>
             </div>
           </div>
           <button onClick={onExit} className="rounded-full bg-white/20 px-4 py-2 text-[13px] font-black text-white">
