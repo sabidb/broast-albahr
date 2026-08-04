@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Broast Al Bahr — Firestore rules.
+// The app has no Firebase Auth (admin is app-password gated), so the menu,
+// restaurant settings, orders and customers collections are open to the client.
+// Tighten these if you later add Firebase Authentication for admins.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Live menu + restaurant open/closed — read by everyone, written by admin.
+    match /settings/{doc} {
+      allow read, write: if true;
+    }
+
+    // Orders placed by customers.
+    match /orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    // Customer loyalty profiles.
+    match /customers/{phone} {
+      allow read, write: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

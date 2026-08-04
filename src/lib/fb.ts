@@ -80,6 +80,14 @@ export const FB = {
     }
   },
 
+  /** Update restaurant settings (e.g. open/closed) — syncs live to clients. */
+  async saveSettings(d: { isOpen: boolean }) {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'settings', 'restaurant'), { ...d, updatedAt: serverTimestamp() }, { merge: true });
+    } catch {}
+  },
+
   async saveOrder(o: Record<string, unknown>) {
     if (!db) return;
     try {

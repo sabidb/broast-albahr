@@ -156,6 +156,11 @@ export default function App() {
     return (
       <AdminPanel
         menu={menu}
+        isOpen={!restaurantClosed}
+        onToggleOpen={(open) => {
+          setRestaurantClosed(!open);
+          FB.saveSettings({ isOpen: open });
+        }}
         onSave={(m) => {
           setMenu(m);
           FB.saveMenu(m);
