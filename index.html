@@ -92,7 +92,7 @@
     try {
 // App version — bumped automatically on every commit that touches this file.
 // See CLAUDE.md for the bump policy.
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.2.1";
 if (typeof window !== "undefined") window.APP_VERSION = APP_VERSION;
 const WHATSAPP_NUMBER = "966500959394";
 const ADMIN_PASSWORD = "albahr2024";
@@ -1414,10 +1414,11 @@ function OrdersTab({ orders, onTrack, isAr }) {
     const statusLabel = {
         new: label("Placed","تم الاستلام"), pending: label("Placed","تم الاستلام"),
         accepted: label("Accepted","تم القبول"), preparing: label("Preparing","قيد التحضير"),
-        ready: label("Ready for pickup","جاهز للاستلام"), completed: label("Completed","مكتمل"),
+        ready: label("Ready for pickup","جاهز للاستلام"),
+        done: label("Completed","مكتمل"), completed: label("Completed","مكتمل"),
         cancelled: label("Cancelled","ملغي"), refunded: label("Refunded","مسترجع"),
     };
-    const statusColor = { new:"#ffdd00", pending:"#ffdd00", accepted:"#22c55e", preparing:"#f59e0b", ready:"#3b82f6", completed:"#6b7280", cancelled:"#ef4444", refunded:"#a855f7" };
+    const statusColor = { new:"#ffdd00", pending:"#ffdd00", accepted:"#22c55e", preparing:"#f59e0b", ready:"#3b82f6", done:"#6b7280", completed:"#6b7280", cancelled:"#ef4444", refunded:"#a855f7" };
     if (!orders || orders.length === 0) {
         return React.createElement("div", { style: { padding:"60px 20px 110px", textAlign:"center", color:"#666" } },
             React.createElement("div", { style: { fontSize:64, marginBottom:14 } }, "🧾"),
@@ -1459,7 +1460,9 @@ function OrderTrackingScreen({ orderId, onBack, isAr }) {
         { key:"completed", labelEn:"Completed",      labelAr:"مكتمل" },
     ];
     const st = (order && order.status) || "pending";
-    const norm = st === "new" ? "pending" : st;
+    // Admin still writes the legacy "new" (initial) and "done" (final) values;
+    // fold them onto the canonical pipeline so the timeline lights correctly.
+    const norm = st === "new" ? "pending" : st === "done" ? "completed" : st;
     const cancelled = st === "cancelled" || st === "refunded";
     let activeIdx = STEPS.findIndex(s => s.key === norm);
     if (activeIdx < 0) activeIdx = 0;
