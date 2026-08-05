@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import AiChat from './AiChat';
+import ReferralCard from './ReferralCard';
+import AddressManager from './AddressManager';
 import { tierFor, type LoyaltyState } from '../lib/loyalty';
 import type { StreakState } from '../lib/streak';
 
@@ -22,10 +24,12 @@ export default function AccountScreen({
   onLogout: () => void;
 }) {
   const [chat, setChat] = useState(false);
+  const [addressesOpen, setAddressesOpen] = useState(false);
   const tier = tierFor(loyalty.lifetime);
   const initial = user.name.trim().charAt(0).toUpperCase() || '🙂';
 
   const rows: { icon: string; label: string; onClick: () => void; danger?: boolean }[] = [
+    { icon: '📍', label: isAr ? 'عناويني المحفوظة' : 'My addresses', onClick: () => setAddressesOpen(true) },
     { icon: '🌐', label: isAr ? 'اللغة: English' : 'Language: عربي', onClick: onToggleLang },
     { icon: '💬', label: isAr ? 'المساعد الذكي' : 'AI Assistant', onClick: () => setChat(true) },
     { icon: '⚙️', label: isAr ? 'لوحة الإدارة' : 'Admin panel', onClick: onAdmin },
@@ -113,9 +117,17 @@ export default function AccountScreen({
         ))}
       </motion.div>
 
+      <ReferralCard phone={user.phone} isAr={isAr} />
+
       <div className="mt-6 text-center text-[11px] font-bold text-brand-muted">
-        Broast Al Bahr · بروست البحر · v2.0
+        Broast Al Bahr · بروست البحر
       </div>
+
+      <AnimatePresence>
+        {addressesOpen && (
+          <AddressManager phone={user.phone} isAr={isAr} onClose={() => setAddressesOpen(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
