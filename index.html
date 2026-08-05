@@ -72,11 +72,42 @@
       var wait=Math.max(0,2000-(Date.now()-window._splashStart));
       setTimeout(function(){var s=document.getElementById("splash");s.classList.add("fade");setTimeout(function(){s.style.display="none";},600);},wait);
     }
+    // Boot watchdog — the app must NEVER leave a bare black screen. If after
+    // 9s React has not mounted anything into #root (blocked CDN, dead network,
+    // a render crash that swallowed itself), replace the void with a visible,
+    // bilingual retry panel instead of the empty near-black #root background.
+    window._bootOK = false;
+    setTimeout(function(){
+      try {
+        if (window._bootOK) return;
+        var root = document.getElementById("root");
+        var mounted = root && root.children && root.children.length > 0;
+        if (mounted) return;
+        var sp = document.getElementById("splash"); if (sp) sp.style.display = "none";
+        if (!root) return;
+        root.innerHTML =
+          '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#120202;color:#fff;font-family:sans-serif;padding:28px;text-align:center">' +
+            '<div style="font-size:52px;margin-bottom:14px">🍗</div>' +
+            '<div style="font-size:18px;font-weight:800;color:#FFD400;margin-bottom:8px">Broast Albahr</div>' +
+            '<div style="font-size:14px;color:#e6b3b3;line-height:1.7;max-width:320px">' +
+              'The app couldn’t finish loading. Check your connection and try again.<br>' +
+              '<span dir="rtl">تعذّر تحميل التطبيق. تحقق من الاتصال ثم أعد المحاولة.</span>' +
+            '</div>' +
+            '<button onclick="location.reload()" style="margin-top:22px;background:linear-gradient(135deg,#FFD400,#FF8C00);border:none;color:#000;padding:13px 30px;border-radius:14px;font-weight:800;font-size:15px;cursor:pointer">↻ Reload · إعادة</button>' +
+          '</div>';
+      } catch(e) {}
+    }, 9000);
   </script>
 
-  <!-- 2. React -->
+  <!-- 2. React — loaded with two CDN fallbacks so one blocked/slow CDN can't
+       blank the whole app. Each guard runs during parse: if the prior tag did
+       not define the global, document.write pulls the next mirror in. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script>window.React||document.write('<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"><\/script>');</script>
+  <script>window.React||document.write('<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"><\/script>');</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script>window.ReactDOM||document.write('<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"><\/script>');</script>
+  <script>window.ReactDOM||document.write('<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"><\/script>');</script>
 
   <!-- 2b. Framer Motion (async, ESM) — components fall back to plain divs until loaded -->
   <script type="module">
@@ -92,7 +123,7 @@
     try {
 // App version — bumped automatically on every commit that touches this file.
 // See CLAUDE.md for the bump policy.
-const APP_VERSION = "2.2.1";
+const APP_VERSION = "2.2.2";
 if (typeof window !== "undefined") window.APP_VERSION = APP_VERSION;
 const WHATSAPP_NUMBER = "966500959394";
 const ADMIN_PASSWORD = "albahr2024";
@@ -2011,15 +2042,44 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr, defaultBranch}) 
   );
 }
 
-      // Wrap App to include SideAIChat in the side menu
-      // (SideAIChat is already integrated via SideMenu component in original code)
+      // Error boundary — a render throw anywhere in the tree lands here and
+      // shows a retry screen instead of React unmounting to a blank #root
+      // (which React 18 concurrent does silently, producing a black screen).
+      class RootBoundary extends React.Component {
+        constructor(p){ super(p); this.state = { err: null }; }
+        static getDerivedStateFromError(err){ return { err: err }; }
+        componentDidCatch(err){ try { console.error("Render crash:", err && err.message, err && err.stack); } catch(e){} }
+        render(){
+          if (this.state.err) {
+            return React.createElement("div", { style: { minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:"#120202", color:"#fff", fontFamily:"sans-serif", padding:28, textAlign:"center" } },
+              React.createElement("div", { style: { fontSize:52, marginBottom:14 } }, "🍗"),
+              React.createElement("div", { style: { fontSize:18, fontWeight:800, color:"#FFD400", marginBottom:8 } }, "Broast Albahr"),
+              React.createElement("div", { style: { fontSize:14, color:"#e6b3b3", lineHeight:1.7, maxWidth:320 } },
+                "Something went wrong loading the app. Please reload.",
+                React.createElement("br", null),
+                React.createElement("span", { dir:"rtl" }, "حدث خطأ أثناء تحميل التطبيق. يرجى إعادة التحميل.")),
+              React.createElement("button", { onClick: () => location.reload(), style: { marginTop:22, background:"linear-gradient(135deg,#FFD400,#FF8C00)", border:"none", color:"#000", padding:"13px 30px", borderRadius:14, fontWeight:800, fontSize:15, cursor:"pointer" } }, "↻ Reload · إعادة"));
+          }
+          return this.props.children;
+        }
+      }
 
-      ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App, null));
+      ReactDOM.createRoot(document.getElementById("root")).render(
+        React.createElement(RootBoundary, null, React.createElement(App, null))
+      );
+      window._bootOK = true; // tell the watchdog the app mounted
       hideSplash();
     } catch(err) {
       console.error("App error:", err.message, err.stack);
-      document.getElementById("splash").style.display = "none";
-      document.getElementById("root").innerHTML = "<div style=\"padding:20px;color:#fff;background:#D60000;min-height:100vh\"><h2>Error: "+err.message+"</h2></div>";
+      window._bootOK = true; // we showed a message; stop the watchdog overwriting it
+      var _sp = document.getElementById("splash"); if (_sp) _sp.style.display = "none";
+      document.getElementById("root").innerHTML =
+        '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#120202;color:#fff;font-family:sans-serif;padding:28px;text-align:center">' +
+          '<div style="font-size:52px;margin-bottom:14px">🍗</div>' +
+          '<div style="font-size:18px;font-weight:800;color:#FFD400;margin-bottom:8px">Broast Albahr</div>' +
+          '<div style="font-size:14px;color:#e6b3b3;line-height:1.7;max-width:320px">Couldn’t start the app. Please reload.<br><span dir="rtl">تعذّر بدء التطبيق. يرجى إعادة التحميل.</span></div>' +
+          '<button onclick="location.reload()" style="margin-top:22px;background:linear-gradient(135deg,#FFD400,#FF8C00);border:none;color:#000;padding:13px 30px;border-radius:14px;font-weight:800;font-size:15px;cursor:pointer">↻ Reload · إعادة</button>' +
+        '</div>';
     }
   </script>
 
