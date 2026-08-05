@@ -409,7 +409,8 @@ function VariantPopup({ item, isAr, onClose, onAdd }) {
 function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, restaurantClosed, branchId, onChangeBranch }) {
     const _branch = (window.BRANCHES || []).find(b => b.id === branchId);
     const _branchLabel = _branch ? (isAr ? _branch.nameAr : _branch.nameEn) : "";
-    const [activeCategory, setActiveCategory] = React.useState(Object.keys(menu)[0]);
+    const _cats = Object.keys(menu || {});
+    const [activeCategory, setActiveCategory] = React.useState(_cats[0] || "");
     const [variantItem, setVariantItem] = React.useState(null);
     const hasVariants = (item) => /Normal.*Spicy|Spicy.*Normal|With Cheese|مع جن|عادي.*حراق|حراق.*عادي|Green Pepper|فلفل/i.test(item.nameAr + item.name);
     const addToCart = (item) => setCart(prev => { var _a; return (Object.assign(Object.assign({}, prev), { [item.id]: Object.assign(Object.assign({}, item), { qty: (((_a = prev[item.id]) === null || _a === void 0 ? void 0 : _a.qty) || 0) + 1 }) })); });
@@ -446,7 +447,7 @@ function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, 
         React.createElement("div", { style: { background: "#0a0000", borderBottom: "1px solid #2a0000", overflowX: "auto" } },
             React.createElement("div", { style: { display: "flex", padding: "0 12px", minWidth: "max-content" } }, Object.keys(menu).map(cat => (React.createElement("button", { key: cat, className: "cat-btn", onClick: () => setActiveCategory(cat), style: { background: "none", border: "none", padding: "12px 12px", fontFamily: isAr ? "Cairo" : "Syne", fontWeight: 600, fontSize: 12, color: activeCategory === cat ? "#ffdd00" : "#555", borderBottom: activeCategory === cat ? "2px solid #ffdd00" : "2px solid transparent", whiteSpace: "nowrap" } }, cat))))),
         React.createElement("main", { style: { maxWidth: 960, margin: "0 auto", padding: "18px 14px", paddingBottom: itemCount > 0 ? 110 : 30 } },
-            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 } }, menu[activeCategory].map(item => (React.createElement("div", { key: item.id, className: "card", style: { background: "#0d0000", border: `1px solid ${item.available ? "#280000" : "#1a0000"}`, borderRadius: 13, padding: 15, display: "flex", flexDirection: "column", gap: 8, opacity: item.available ? 1 : 0.45, position: "relative" } },
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 } }, (menu[activeCategory] || []).map(item => (React.createElement("div", { key: item.id, className: "card", style: { background: "#0d0000", border: `1px solid ${item.available ? "#280000" : "#1a0000"}`, borderRadius: 13, padding: 15, display: "flex", flexDirection: "column", gap: 8, opacity: item.available ? 1 : 0.45, position: "relative" } },
                 !item.available && (React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", borderRadius: 13, zIndex: 2 } },
                     React.createElement("span", { style: { background: "#cc0000", color: "#fff", padding: "5px 14px", borderRadius: 20, fontWeight: 800, fontSize: 12 } }, isAr ? "غير متاح" : "Unavailable"))),
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
