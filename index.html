@@ -1061,6 +1061,40 @@ function App() {
         })();
         return () => { if (unsubMenu) unsubMenu(); if (unsubSettings) unsubSettings(); };
     }, []);
+    // Auto-load customer profile + order history whenever we have a phone number.
+    // Runs both on fresh login and on page reload with a stored user.
+    React.useEffect(() => {
+        if (!user || !user.phone || !window.FB) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const profile = await window.FB.getCustomer(user.phone);
+                if (!cancelled && profile) {
+                    // Merge stored profile back into local user (keep entered name if fresher).
+                    const merged = Object.assign({}, profile, { name: user.name || profile.name, phone: user.phone });
+                    setUser(merged);
+                    try { localStorage.setItem("ba_user", JSON.stringify(merged)); } catch(e) {}
+                    // Seed the order counter so new orders continue past history length.
+                    if (typeof profile.orderCount === "number") {
+                        orderCounterRef.current = Math.max(orderCounterRef.current, 1000 + profile.orderCount);
+                    }
+                }
+                const past = await window.FB.getCustomerOrders(user.phone);
+                if (!cancelled && Array.isArray(past) && past.length) {
+                    // Normalize date field so history renderer + loyalty math work uniformly.
+                    const normalized = past.map(function(o){
+                        var iso = o.date;
+                        if (!iso && o.createdAt && o.createdAt.seconds) {
+                            iso = new Date(o.createdAt.seconds * 1000).toISOString();
+                        }
+                        return Object.assign({}, o, { date: iso || new Date().toISOString(), total: Number(o.total)||0, items: o.items||[] });
+                    });
+                    setOrders(normalized);
+                }
+            } catch(e) { console.log("Customer history load:", e); }
+        })();
+        return () => { cancelled = true; };
+    }, [user && user.phone]);
     const updateMenu = (newMenu) => {
         var _a;
         setMenu(newMenu);
@@ -1101,7 +1135,9 @@ function App() {
                   window.FB.saveCustomer({
                     name: user.name,
                     phone: user.phone,
-                    loyaltyPoints: increment(_pts)
+                    loyaltyDelta: _pts,
+                    address: orderData.address || "",
+                    locationLink: orderData.locationLink || ""
                   });
                 }
                 setStep(3);
@@ -1336,8 +1372,16 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr}) {
         saveSettings: async function(d){ try{ await setDoc(doc(_db,"settings","restaurant"),Object.assign({},d,{updatedAt:serverTimestamp()})); }catch(e){} },
         saveOrder: async function(o){ try{ var ref=await addDoc(collection(_db,"orders"),Object.assign({},o,{createdAt:serverTimestamp(),status:"new"})); return ref&&ref.id?ref.id:true; }catch(e){ console.error("saveOrder failed:",e); return false; } },
         updateOrderStatus: async function(id,s){ try{ await updateDoc(doc(_db,"orders",id),{status:s,updatedAt:serverTimestamp()}); }catch(e){} },
-        saveCustomer: async function(d){ try{ var data=Object.assign({},d,{lastSeen:serverTimestamp()}); if(d.loyaltyPoints!==undefined){ data.loyaltyPoints=d.loyaltyPoints; } await setDoc(doc(_db,"customers",d.phone),data,{merge:true}); }catch(e){} },
-        getCustomerOrders: async function(ph){ try{ var snap=await getDocs(collection(_db,"orders")); return snap.docs.map(function(d){ return Object.assign({fbId:d.id},d.data()); }).filter(function(o){ return o.userPhone===ph; }).sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); }); }catch(e){ return []; } },
+        saveCustomer: async function(d){ try{
+          if(!d||!d.phone) return;
+          var data=Object.assign({},d,{lastSeen:serverTimestamp()});
+          delete data.loyaltyDelta;
+          if(d.loyaltyDelta && Number(d.loyaltyDelta)>0){ data.loyaltyPoints=increment(Number(d.loyaltyDelta)); }
+          if(d.address){ data.lastAddress=d.address; data.locationLink=d.locationLink||""; }
+          await setDoc(doc(_db,"customers",d.phone),data,{merge:true});
+        }catch(e){ console.warn("saveCustomer failed:",e); } },
+        getCustomer: async function(ph){ try{ if(!ph) return null; var s=await getDoc(doc(_db,"customers",ph)); return s.exists()?Object.assign({phone:ph},s.data()):null; }catch(e){ return null; } },
+        getCustomerOrders: async function(ph){ try{ if(!ph) return []; var snap=await getDocs(collection(_db,"orders")); return snap.docs.map(function(d){ return Object.assign({fbId:d.id},d.data()); }).filter(function(o){ return o.userPhone===ph; }).sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); }); }catch(e){ return []; } },
         onMenuChange: function(cb){ return onSnapshot(doc(_db,"settings","menu"),function(s){ if(s.exists())cb(s.data().menu); }); },
         onSettingsChange: function(cb){ return onSnapshot(doc(_db,"settings","restaurant"),function(s){ if(s.exists())cb(s.data()); }); },
         onOrdersChange: function(cb){ return onSnapshot(collection(_db,"orders"),function(s){ var o=s.docs.map(function(d){ return Object.assign({fbId:d.id},d.data()); }); o.sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); }); cb(o); }); },
