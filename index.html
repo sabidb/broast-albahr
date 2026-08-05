@@ -1325,7 +1325,10 @@ function App() {
         step === 1 && branchId && (React.createElement(MenuStep, { key: "menu-" + branchId, menu: branchMenu, cart: cart, setCart: setCart, user: user, isAr: isAr, lang: lang, setLang: setLang, onCheckout: () => setStep(2), branchId: branchId, onChangeBranch: () => setBranchId("") })),
         step === 2 && (React.createElement(CheckoutStep, { cart: cart, user: user, isAr: isAr, defaultBranch: branchId, onBack: () => setStep(1), onOrderPlaced: (orderData) => {
                 var _a;
-                const newOrder = Object.assign(Object.assign({}, orderData), { orderNo: String(orderCounterRef.current++).padStart(4, "0"), date: new Date().toISOString(), userName: user.name, userPhone: user.phone });
+                // Prefer the global counter number that CheckoutStep already
+                // reserved; only fall back to the local counter if that failed.
+                const _localNo = String(orderCounterRef.current++).padStart(4, "0");
+                const newOrder = Object.assign(Object.assign({}, orderData), { orderNo: orderData.orderNo || _localNo, date: new Date().toISOString(), userName: user.name, userPhone: user.phone });
                 const updatedOrders = [...orders, newOrder];
                 setOrders(updatedOrders);
                 if(window.FB) window.FB.saveOrder(newOrder);
@@ -1441,11 +1444,15 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr, defaultBranch}) 
     if(orderType==="delivery"&&deliveryFee)lines.push(`Delivery Fee: SR ${deliveryFee.toFixed(2)}`);
     lines.push(`VAT 15%: SR ${vat.toFixed(2)}`,`TOTAL: SR ${total.toFixed(2)}`);
     window.open(`https://wa.me/${brObj.whatsapp}?text=${encodeURIComponent(lines.join(sep))}`,"_blank");
+    var assignedOrderNo = "";
     if(window.FB){
-      var saved=await window.FB.saveOrder({branch,orderType,items:cartItems,subtotal,platformFee:pFee,deliveryFee:dFee,vat,total,locationLink:locLink,paymentMethod:payMethod,note,userName:user.name,userPhone:user.phone,date:new Date().toISOString(),orderNo:String(Date.now()).slice(-4)});
+      // Reserve the global 6-digit order number BEFORE writing, so both the
+      // stored doc and the receipt/WhatsApp message use the same number.
+      try { assignedOrderNo = String(await window.FB.nextOrderNo()); } catch(_) {}
+      var saved=await window.FB.saveOrder({branch,orderType,items:cartItems,subtotal,platformFee:pFee,deliveryFee:dFee,vat,total,locationLink:locLink,paymentMethod:payMethod,note,userName:user.name,userPhone:user.phone,date:new Date().toISOString(),orderNo:assignedOrderNo || String(Date.now()).slice(-4)});
       if(!saved)alert(isAr?"⚠️ تم إرسال طلبك عبر واتساب، لكن لم يتم تسجيله في النظام. يرجى تأكيد الطلب مع الفرع.":"⚠️ Your order was sent via WhatsApp, but could not be recorded in our system. Please confirm the order with the branch.");
     }
-    onOrderPlaced({branch,orderType,items:cartItems,subtotal,platformFee:pFee,deliveryFee:dFee,vat,total,locationLink:locLink,paymentMethod:payMethod,note});
+    onOrderPlaced({branch,orderType,items:cartItems,subtotal,platformFee:pFee,deliveryFee:dFee,vat,total,locationLink:locLink,paymentMethod:payMethod,note,orderNo:assignedOrderNo});
   };
 
   const cs = (active) => ({flex:1,padding:"11px",borderRadius:12,border:`2px solid ${active?"#D60000":"rgba(255,255,255,0.08)"}`,background:active?"rgba(214,0,0,0.15)":"#1B0505",color:active?"#FFD400":"#A8A8A8",fontWeight:700,fontSize:13,cursor:"pointer"});
@@ -1554,7 +1561,7 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr, defaultBranch}) 
   <script type="module">
     try {
       var { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-      var { getFirestore, doc, getDoc, setDoc, addDoc, collection, onSnapshot, updateDoc, serverTimestamp, getDocs, increment }
+      var { getFirestore, doc, getDoc, setDoc, addDoc, collection, onSnapshot, updateDoc, serverTimestamp, getDocs, increment, runTransaction }
         = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
       var _app = initializeApp({
         apiKey: "AIzaSyB2PqybuRwuBjDQHgl1r9iFOC5b5lr81-s",
@@ -1570,7 +1577,26 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr, defaultBranch}) 
         saveMenu: async function(m){ try{ await setDoc(doc(_db,"settings","menu"),{menu:m,updatedAt:serverTimestamp()}); }catch(e){} },
         getSettings: async function(){ try{ var s=await getDoc(doc(_db,"settings","restaurant")); return s.exists()?s.data():{isOpen:true}; }catch(e){ return {isOpen:true}; } },
         saveSettings: async function(d){ try{ await setDoc(doc(_db,"settings","restaurant"),Object.assign({},d,{updatedAt:serverTimestamp()})); }catch(e){} },
-        saveOrder: async function(o){ try{ var ref=await addDoc(collection(_db,"orders"),Object.assign({},o,{createdAt:serverTimestamp(),status:"new"})); return ref&&ref.id?ref.id:true; }catch(e){ console.error("saveOrder failed:",e); return false; } },
+        // Atomic counter — first order returns 100000, next 100001, ...
+        nextOrderNo: async function(){ try{
+          return await runTransaction(_db, async function(tx){
+            var ref = doc(_db, "counters", "orderNo");
+            var snap = await tx.get(ref);
+            var cur = (snap.exists() && typeof snap.data().value === "number") ? snap.data().value : 99999;
+            var next = cur + 1;
+            tx.set(ref, { value: next, updatedAt: serverTimestamp() }, { merge: true });
+            return next;
+          });
+        }catch(e){ console.warn("nextOrderNo failed, falling back to timestamp:", e); return 100000 + (Date.now()%900000); } },
+        saveOrder: async function(o){ try{
+          var payload = Object.assign({}, o, { createdAt: serverTimestamp(), status: "new" });
+          // Make sure every order carries a real global order number.
+          if (!payload.orderNo || String(payload.orderNo).length < 6) {
+            try { payload.orderNo = String(await window.FB.nextOrderNo()); } catch(_) {}
+          }
+          var ref = await addDoc(collection(_db, "orders"), payload);
+          return ref && ref.id ? { id: ref.id, orderNo: payload.orderNo } : true;
+        }catch(e){ console.error("saveOrder failed:", e); return false; } },
         updateOrderStatus: async function(id,s){ try{ await updateDoc(doc(_db,"orders",id),{status:s,updatedAt:serverTimestamp()}); }catch(e){} },
         saveCustomer: async function(d){ try{
           if(!d||!d.phone) return;
