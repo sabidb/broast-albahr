@@ -272,8 +272,8 @@ export default function App() {
             exit={{ y: 90, opacity: 0 }}
             whileTap={{ scale: 0.96 }}
             onClick={() => setCheckoutOpen(true)}
-            className="fixed inset-x-0 bottom-5 z-[95] mx-auto flex w-[calc(100%-2rem)] max-w-[420px] items-center justify-between rounded-[22px] px-5 py-3.5 text-white shadow-[0_16px_40px_rgba(225,6,0,0.4)]"
-            style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
+            className="fixed inset-x-0 z-[95] mx-auto flex w-[calc(100%-2rem)] max-w-[420px] items-center justify-between rounded-[22px] px-5 py-3.5 text-white shadow-[0_16px_40px_rgba(225,6,0,0.4)]"
+            style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
           >
             <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/25 px-2 text-[13px] font-black">
               {cartCount}
@@ -344,25 +344,18 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* success overlay */}
+      {/* success popup modal */}
       <AnimatePresence>
         {lastOrder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[210] overflow-y-auto bg-brand-cream"
-          >
-            <OrderSuccess
-              order={lastOrder}
-              isAr={isAr}
-              onNewOrder={() => {
-                setCart({});
-                setLastOrder(null);
-                setTab('menu');
-              }}
-            />
-          </motion.div>
+          <OrderSuccess
+            order={lastOrder}
+            isAr={isAr}
+            onNewOrder={() => {
+              setCart({});
+              setLastOrder(null);
+              setTab('menu');
+            }}
+          />
         )}
       </AnimatePresence>
 

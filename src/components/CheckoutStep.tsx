@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BRANCHES, VALID_COUPONS, PAYMENT_METHODS, PICKUP_SLOTS, type MenuItem } from '../lib/data';
-import { calcDistance, getDeliveryFee, computeTotals, buildWhatsAppMessage, money } from '../lib/utils';
+import { calcDistance, getDeliveryFee, computeTotals, money } from '../lib/utils';
 import ItemImage from './ItemImage';
 import type { Cart } from './MenuStep';
 
@@ -106,8 +106,6 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
       user,
       isAr,
     };
-    const msg = buildWhatsAppMessage(payload);
-    window.open(`https://wa.me/${branchObj.whatsapp}?text=${encodeURIComponent(msg)}`, '_blank');
     onOrderPlaced(payload);
   };
 
@@ -372,7 +370,7 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }
           className="sheen w-full rounded-2xl py-4 text-[17px] font-black text-white shadow-red"
           style={{ background: 'linear-gradient(135deg,#11845B,#0c6b49)' }}
         >
-          {isAr ? '✅ تأكيد الطلب عبر واتساب' : '✅ Confirm via WhatsApp'}
+          {isAr ? '✅ تأكيد الطلب' : '✅ Confirm Order'}
         </motion.button>
       </div>
     </div>

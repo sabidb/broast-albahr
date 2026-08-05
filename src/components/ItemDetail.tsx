@@ -104,10 +104,10 @@ export default function ItemDetail({
         onDragEnd={(_, info) => {
           if (info.offset.y > 130 || info.velocity.y > 700) onClose();
         }}
-        className="flex max-h-[94vh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[30px] bg-brand-cream"
+        className="flex h-[92dvh] max-h-[92dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[30px] bg-brand-cream sm:h-auto sm:max-h-[88vh]"
       >
-        {/* big image hero */}
-        <div className="relative shrink-0 px-5 pb-6 pt-4" style={{ background: kindGradient(kind) }}>
+        {/* compact image hero */}
+        <div className="relative shrink-0 px-5 pb-4 pt-3" style={{ background: kindGradient(kind) }}>
           <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/50" />
           <button
             onClick={onClose}
@@ -119,12 +119,12 @@ export default function ItemDetail({
             initial={{ scale: 0.7, rotate: -8, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 220, damping: 16 }}
-            className="mx-auto h-44 w-44 overflow-hidden rounded-[32px] bg-white/20 ring-8 ring-white/10"
+            className="mx-auto h-32 w-32 overflow-hidden rounded-[28px] bg-white/20 ring-8 ring-white/10 sm:h-40 sm:w-40"
           >
-            <ItemImage item={item} category={category} iconSize={128} />
+            <ItemImage item={item} category={category} iconSize={100} />
           </motion.div>
-          <h2 className="mt-4 text-center text-2xl font-black text-white drop-shadow">{baseName}</h2>
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <h2 className="mt-3 text-center text-[22px] font-black leading-tight text-white drop-shadow sm:text-2xl">{baseName}</h2>
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5">
             <span className={chip}>🔥 {item.cal}</span>
             {pieces && <span className={chip}>{isAr ? `${pieces} قطع` : `${pieces} pieces`}</span>}
             <span className={chip}>{isAr ? '١٠٠٪ حلال' : '100% Halal'}</span>
@@ -179,8 +179,11 @@ export default function ItemDetail({
           )}
         </div>
 
-        {/* sticky add bar */}
-        <div className="shrink-0 border-t border-brand-line bg-white/80 px-5 py-4 backdrop-blur">
+        {/* always-visible add bar */}
+        <div
+          className="shrink-0 border-t border-brand-line bg-white/95 px-5 pt-4 backdrop-blur"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+        >
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-3 rounded-2xl bg-brand-cream2 px-2 py-1.5">
               <button
