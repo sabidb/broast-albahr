@@ -92,7 +92,7 @@
     try {
 // App version — bumped automatically on every commit that touches this file.
 // See CLAUDE.md for the bump policy.
-const APP_VERSION = "2.1.1";
+const APP_VERSION = "2.2.0";
 if (typeof window !== "undefined") window.APP_VERSION = APP_VERSION;
 const WHATSAPP_NUMBER = "966500959394";
 const ADMIN_PASSWORD = "albahr2024";
@@ -1209,6 +1209,384 @@ function BranchSelectStep({ onSelect, isAr, orders, defaultBranch, userName }) {
 }
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
+// ============================================================================
+// Phase 2 — customer-app UX pack
+// Bottom tab nav, Home, Offers, Orders (w/ live tracking), Profile, Support,
+// Notifications inbox, Product detail sheet. All screens are pure React
+// components — no build step, matching the rest of this file.
+// ============================================================================
+
+// Reads coupon + offer docs and last-N notifications from Firestore. All calls
+// tolerate window.FB being absent so the app still works offline / preview.
+function useSettingsDoc(key, fallback) {
+    const [value, setValue] = React.useState(fallback);
+    React.useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                if (!window.FB || !window.FB.getSettingsDoc) return;
+                const v = await window.FB.getSettingsDoc(key);
+                if (alive && v) setValue(v);
+            } catch(e) {}
+        })();
+        let unsub = null;
+        try {
+            if (window.FB && window.FB.onSettingsDocChange) {
+                unsub = window.FB.onSettingsDocChange(key, (v) => { if (v) setValue(v); });
+            }
+        } catch(e) {}
+        return () => { alive = false; if (unsub) try { unsub(); } catch(e) {} };
+    }, [key]);
+    return value;
+}
+
+// Product detail bottom sheet. Only opens when the item exposes any of the
+// rich fields (description, addons, extras, spice). Simple items still fast-add.
+function ProductDetailSheet({ item, onAdd, onClose, isAr }) {
+    if (!item) return null;
+    const [qty, setQty] = React.useState(1);
+    const [spice, setSpice] = React.useState(item.spice || null);
+    const [addons, setAddons] = React.useState({});
+    const [extras, setExtras] = React.useState({});
+    const [note, setNote] = React.useState("");
+    const addonList = Array.isArray(item.addons) ? item.addons : [];
+    const extraList = Array.isArray(item.extras) ? item.extras : [];
+    const sauceList = Array.isArray(item.sauces) ? item.sauces : [];
+    const spiceLevels = Array.isArray(item.spiceLevels) ? item.spiceLevels : (item.spice ? ["Mild","Medium","Hot"] : []);
+    const addonTotal = addonList.reduce((s, a) => s + (addons[a.id] ? (a.price || 0) : 0), 0);
+    const extraTotal = extraList.reduce((s, e) => s + (extras[e.id] ? (e.price || 0) * (extras[e.id] || 0) : 0), 0);
+    const linePrice = (item.price || 0) + addonTotal + extraTotal;
+    const total = Math.round(linePrice * qty * 100) / 100;
+    const label = (en, ar) => isAr ? ar : en;
+    const doAdd = () => {
+        const picked = Object.assign({}, item, {
+            id: item.id + (spice ? "_" + spice : "") + (Object.keys(addons).filter(k=>addons[k]).sort().join("_")||""),
+            price: linePrice,
+            qty: qty,
+            addons: addonList.filter(a => addons[a.id]).map(a => a.name),
+            extras: extraList.filter(e => (extras[e.id]||0) > 0).map(e => ({name: e.name, qty: extras[e.id]})),
+            sauces: sauceList.filter(s => addons["s_" + s.id]).map(s => s.name),
+            spice: spice || null,
+            note: note.trim() || null,
+        });
+        onAdd(picked);
+        onClose();
+    };
+    return React.createElement("div", { onClick: onClose, style: { position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", zIndex:1200, display:"flex", alignItems:"flex-end", justifyContent:"center", animation:"fadeIn 0.2s ease" } },
+        React.createElement("div", { onClick: e=>e.stopPropagation(), style: { background:"#0d0000", border:"1px solid #2a0000", borderRadius:"24px 24px 0 0", width:"100%", maxWidth:520, maxHeight:"92vh", overflow:"auto", padding:0 } },
+            React.createElement("div", { style: { width:44, height:5, background:"#3a0000", borderRadius:3, margin:"12px auto 0" } }),
+            item.image && React.createElement("img", { src: item.image, alt: item.name, style: { width:"100%", height:220, objectFit:"cover", marginTop:12 } }),
+            React.createElement("div", { style: { padding:"18px 20px 8px" } },
+                React.createElement("div", { style: { display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize:20, fontWeight:900, color:"#fff", marginBottom:4 } }, isAr ? (item.nameAr || item.name) : item.name),
+                        item.cal && React.createElement("span", { style: { display:"inline-block", background:"#1e0000", color:"#cc0000", fontSize:11, padding:"3px 8px", borderRadius:20, fontWeight:700, border:"1px solid #380000" } }, item.cal + " " + label("cal","سعرة"))),
+                    React.createElement("div", { style: { fontSize:20, fontWeight:900, color:"#ffdd00" } }, linePrice.toFixed(2) + " " + label("SAR","ر.س"))),
+                item.description && React.createElement("div", { style: { fontSize:13, color:"#aaa", marginTop:12, lineHeight:1.6 } }, isAr && item.descriptionAr ? item.descriptionAr : item.description),
+                item.ingredients && React.createElement("div", { style: { fontSize:12, color:"#888", marginTop:8, fontStyle:"italic" } }, label("Contains: ","المكونات: ") + item.ingredients)),
+            spiceLevels.length > 0 && React.createElement("div", { style: { padding:"12px 20px" } },
+                React.createElement("div", { style: { fontSize:12, color:"#ffdd00", fontWeight:800, marginBottom:8, textTransform:"uppercase", letterSpacing:1 } }, label("Spice level","درجة الحرارة")),
+                React.createElement("div", { style: { display:"flex", gap:8, flexWrap:"wrap" } },
+                    spiceLevels.map(s => React.createElement("button", { key: s, onClick: () => setSpice(s),
+                        style: { padding:"9px 16px", borderRadius:20, border: spice === s ? "2px solid #ffdd00" : "1px solid #2a0000", background: spice === s ? "rgba(255,221,0,0.12)" : "#1a0000", color: spice === s ? "#ffdd00" : "#888", fontWeight:700, fontSize:13, cursor:"pointer" } }, s)))),
+            addonList.length > 0 && React.createElement("div", { style: { padding:"12px 20px" } },
+                React.createElement("div", { style: { fontSize:12, color:"#ffdd00", fontWeight:800, marginBottom:8, textTransform:"uppercase", letterSpacing:1 } }, label("Add-ons","الإضافات")),
+                addonList.map(a => React.createElement("label", { key: a.id, style: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", background:"#1a0000", border:"1px solid #2a0000", borderRadius:10, marginBottom:6, cursor:"pointer" } },
+                    React.createElement("div", { style: { display:"flex", alignItems:"center", gap:10 } },
+                        React.createElement("input", { type:"checkbox", checked: !!addons[a.id], onChange: e => setAddons(p => Object.assign({}, p, {[a.id]: e.target.checked})) }),
+                        React.createElement("span", { style: { color:"#fff", fontSize:13 } }, isAr ? (a.nameAr || a.name) : a.name)),
+                    React.createElement("span", { style: { color:"#ffdd00", fontWeight:800, fontSize:13 } }, "+" + (a.price || 0).toFixed(2))))),
+            extraList.length > 0 && React.createElement("div", { style: { padding:"12px 20px" } },
+                React.createElement("div", { style: { fontSize:12, color:"#ffdd00", fontWeight:800, marginBottom:8, textTransform:"uppercase", letterSpacing:1 } }, label("Extras","الإضافات الاختيارية")),
+                extraList.map(e => React.createElement("div", { key: e.id, style: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", background:"#1a0000", border:"1px solid #2a0000", borderRadius:10, marginBottom:6 } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { color:"#fff", fontSize:13 } }, isAr ? (e.nameAr || e.name) : e.name),
+                        React.createElement("div", { style: { color:"#ffdd00", fontSize:11, marginTop:2 } }, "+" + (e.price || 0).toFixed(2) + " " + label("each","لكل"))),
+                    React.createElement("div", { style: { display:"flex", alignItems:"center", gap:8 } },
+                        React.createElement("button", { onClick: () => setExtras(p => Object.assign({}, p, {[e.id]: Math.max(0, (p[e.id]||0) - 1)})), style: { width:28, height:28, borderRadius:6, border:"none", background:"#2a0000", color:"#fff", fontWeight:800, cursor:"pointer" } }, "-"),
+                        React.createElement("span", { style: { minWidth:18, textAlign:"center", color:"#fff", fontWeight:800 } }, extras[e.id] || 0),
+                        React.createElement("button", { onClick: () => setExtras(p => Object.assign({}, p, {[e.id]: (p[e.id]||0) + 1})), style: { width:28, height:28, borderRadius:6, border:"none", background:"#cc0000", color:"#fff", fontWeight:800, cursor:"pointer" } }, "+"))))),
+            React.createElement("div", { style: { padding:"12px 20px" } },
+                React.createElement("div", { style: { fontSize:12, color:"#ffdd00", fontWeight:800, marginBottom:8, textTransform:"uppercase", letterSpacing:1 } }, label("Special instructions","تعليمات خاصة")),
+                React.createElement("textarea", { value: note, onChange: e => setNote(e.target.value), placeholder: label("e.g. no onions","بدون بصل مثلاً"), style: { width:"100%", minHeight:60, background:"#1a0000", border:"1px solid #2a0000", borderRadius:10, padding:"10px 12px", color:"#fff", fontFamily:"inherit", fontSize:13, resize:"vertical" } })),
+            React.createElement("div", { style: { padding:"14px 20px 20px", borderTop:"1px solid #2a0000", position:"sticky", bottom:0, background:"#0d0000", display:"flex", gap:12, alignItems:"center" } },
+                React.createElement("div", { style: { display:"flex", alignItems:"center", gap:10, background:"#1a0000", border:"1px solid #2a0000", padding:"6px 10px", borderRadius:12 } },
+                    React.createElement("button", { onClick: () => setQty(q => Math.max(1, q-1)), style: { width:32, height:32, borderRadius:8, border:"none", background:"#2a0000", color:"#fff", fontWeight:800, cursor:"pointer" } }, "-"),
+                    React.createElement("span", { style: { minWidth:20, textAlign:"center", color:"#fff", fontWeight:900, fontSize:15 } }, qty),
+                    React.createElement("button", { onClick: () => setQty(q => q+1), style: { width:32, height:32, borderRadius:8, border:"none", background:"#cc0000", color:"#fff", fontWeight:800, cursor:"pointer" } }, "+")),
+                React.createElement("button", { onClick: doAdd, style: { flex:1, background:"linear-gradient(135deg,#cc0000,#990000)", border:"2px solid #ffdd00", color:"#ffdd00", padding:"14px", borderRadius:12, fontWeight:900, fontSize:15, cursor:"pointer" } },
+                    label("Add · ","أضف · ") + total.toFixed(2) + " " + label("SAR","ر.س")))));
+}
+
+function hasProductDetail(item) {
+    if (!item) return false;
+    if (item.hasDetail === true) return true;
+    if (item.description || item.ingredients) return true;
+    if (Array.isArray(item.addons) && item.addons.length) return true;
+    if (Array.isArray(item.extras) && item.extras.length) return true;
+    if (Array.isArray(item.spiceLevels) && item.spiceLevels.length) return true;
+    return false;
+}
+
+// Home tab. Hero banner, branch chip, categories carousel, popular row,
+// offers strip. All data reactive from parent (menu + branch).
+function HomeTab({ menu, branch, branches, onChangeBranch, onOpenProduct, onGoOffers, onGoMenu, restaurantClosed, isAr, offers }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const cats = Object.keys(menu || {});
+    // Popular = first 6 items across all categories (until we have a real signal).
+    const popular = [];
+    cats.forEach(c => (menu[c] || []).slice(0, 2).forEach(it => popular.push(Object.assign({}, it, { _cat: c }))));
+    const branchName = (b) => !b ? "-" : (isAr ? (b.nameAr || b.nameEn) : b.nameEn);
+    const currentBranch = (branches || []).find(b => b.id === branch);
+    return React.createElement("div", { style: { paddingBottom: 110 } },
+        // Hero
+        React.createElement("div", { style: { background:"linear-gradient(135deg,#cc0000 0%,#880000 55%,#180000 100%)", padding:"22px 20px 30px", borderBottom:"1px solid #330000", position:"relative", overflow:"hidden" } },
+            React.createElement("div", { style: { position:"absolute", top:-30, right:-30, width:180, height:180, borderRadius:"50%", background:"radial-gradient(circle,rgba(255,221,0,0.15),transparent)" } }),
+            React.createElement("button", { onClick: onChangeBranch, style: { background:"rgba(0,0,0,0.35)", border:"1px solid rgba(255,221,0,0.35)", color:"#ffdd00", padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:800, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:6 } },
+                "📍 ", branchName(currentBranch), " ▾"),
+            React.createElement("div", { style: { marginTop:14, fontSize:22, fontWeight:900, color:"#fff", lineHeight:1.25 } }, label("Craving crispy broast?","تشتهي بروست مقرمش؟")),
+            React.createElement("div", { style: { fontSize:13, color:"rgba(255,255,255,0.75)", marginTop:6 } }, label("Fresh · Hot · Pickup ready in 15–20 min","طازج · ساخن · جاهز للاستلام خلال 15–20 دقيقة")),
+            restaurantClosed && React.createElement("div", { style: { marginTop:12, background:"rgba(255,68,68,0.15)", border:"1px solid #cc0000", padding:"8px 12px", borderRadius:10, color:"#ff6b6b", fontSize:12, fontWeight:700 } },
+                label("🔴 We are closed right now. Try again during opening hours.","🔴 المطعم مغلق الآن. حاول لاحقاً خلال ساعات العمل."))),
+        // Categories row
+        cats.length > 0 && React.createElement("div", { style: { padding:"18px 20px 6px" } },
+            React.createElement("div", { style: { display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 } },
+                React.createElement("div", { style: { fontSize:15, fontWeight:900, color:"#fff" } }, label("Categories","الأقسام")),
+                React.createElement("button", { onClick: onGoMenu, style: { background:"none", border:"none", color:"#ffdd00", fontSize:12, fontWeight:700, cursor:"pointer" } }, label("See all →","عرض الكل →"))),
+            React.createElement("div", { style: { display:"flex", gap:10, overflowX:"auto", paddingBottom:8 } },
+                cats.map(c => React.createElement("button", { key:c, onClick: () => onGoMenu(c),
+                    style: { flex:"0 0 auto", padding:"14px 18px", borderRadius:14, border:"1px solid #2a0000", background:"#1b0505", color:"#fff", fontWeight:800, fontSize:13, cursor:"pointer", whiteSpace:"nowrap" } }, c)))),
+        // Offers strip
+        (Array.isArray(offers) && offers.length > 0) && React.createElement("div", { style: { padding:"10px 20px" } },
+            React.createElement("div", { style: { display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 } },
+                React.createElement("div", { style: { fontSize:15, fontWeight:900, color:"#fff" } }, label("Live offers","العروض")),
+                React.createElement("button", { onClick: onGoOffers, style: { background:"none", border:"none", color:"#ffdd00", fontSize:12, fontWeight:700, cursor:"pointer" } }, label("All →","الكل →"))),
+            React.createElement("div", { style: { display:"flex", gap:10, overflowX:"auto", paddingBottom:8 } },
+                offers.slice(0,6).map((o, i) => React.createElement("div", { key:i, onClick: onGoOffers,
+                    style: { flex:"0 0 240px", padding:"14px 16px", borderRadius:14, background:"linear-gradient(135deg,#3a0000,#180000)", border:"1px solid #4a0000", cursor:"pointer" } },
+                    React.createElement("div", { style: { fontSize:11, color:"#ffdd00", fontWeight:800, letterSpacing:1 } }, (o.badge || "OFFER").toUpperCase()),
+                    React.createElement("div", { style: { fontSize:14, fontWeight:900, color:"#fff", marginTop:6 } }, isAr ? (o.titleAr || o.title) : o.title),
+                    o.sub && React.createElement("div", { style: { fontSize:11, color:"#aaa", marginTop:4 } }, isAr ? (o.subAr || o.sub) : o.sub))))),
+        // Popular
+        popular.length > 0 && React.createElement("div", { style: { padding:"14px 20px 6px" } },
+            React.createElement("div", { style: { fontSize:15, fontWeight:900, color:"#fff", marginBottom:12 } }, label("🔥 Popular right now","🔥 الأكثر طلباً")),
+            React.createElement("div", { style: { display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12 } },
+                popular.map(it => React.createElement("div", { key: it.id || (it._cat + "_" + it.name), onClick: () => onOpenProduct(it),
+                    style: { background:"#0d0000", border:"1px solid #280000", borderRadius:14, padding:12, cursor:"pointer" } },
+                    React.createElement("div", { style: { fontSize:28, textAlign:"center", marginBottom:6 } }, it.emoji || "🍗"),
+                    React.createElement("div", { style: { fontSize:12, fontWeight:800, color:"#fff", marginBottom:4, lineHeight:1.35 } }, isAr ? (it.nameAr || it.name) : it.name),
+                    React.createElement("div", { style: { fontSize:12, color:"#ffdd00", fontWeight:800 } }, (it.price || 0).toFixed(2) + " " + label("SAR","ر.س")))))));
+}
+
+// Offers tab. Reads settings/offers doc (owner-managed) + settings/coupons.
+function OffersTab({ isAr }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const offersDoc = useSettingsDoc("offers", { items: [] });
+    const couponsDoc = useSettingsDoc("coupons", { items: [] });
+    const offers = (offersDoc && offersDoc.items) || [];
+    const coupons = (couponsDoc && couponsDoc.items) || [];
+    return React.createElement("div", { style: { padding:"20px 18px 110px" } },
+        React.createElement("div", { style: { fontSize:22, fontWeight:900, color:"#fff", marginBottom:16 } }, label("Offers & deals","العروض والصفقات")),
+        offers.length === 0 && coupons.length === 0 &&
+            React.createElement("div", { style: { textAlign:"center", padding:"40px 20px", color:"#666" } },
+                React.createElement("div", { style: { fontSize:56, marginBottom:12 } }, "🎁"),
+                React.createElement("div", { style: { fontSize:14, fontWeight:700, color:"#888" } }, label("No offers right now — check back soon!","لا توجد عروض حالياً — عد قريباً!"))),
+        offers.map((o, i) => React.createElement("div", { key: "o"+i, style: { background:"linear-gradient(135deg,#3a0000,#180000)", border:"1px solid #4a0000", borderRadius:16, padding:18, marginBottom:12 } },
+            React.createElement("div", { style: { fontSize:11, color:"#ffdd00", fontWeight:800, letterSpacing:1 } }, (o.badge || "OFFER").toUpperCase()),
+            React.createElement("div", { style: { fontSize:17, fontWeight:900, color:"#fff", marginTop:6 } }, isAr ? (o.titleAr || o.title) : o.title),
+            o.sub && React.createElement("div", { style: { fontSize:12, color:"#aaa", marginTop:6 } }, isAr ? (o.subAr || o.sub) : o.sub),
+            o.expiresAt && React.createElement("div", { style: { fontSize:11, color:"#ff8080", marginTop:8 } }, label("Ends ","ينتهي ") + new Date(o.expiresAt).toLocaleDateString()))),
+        coupons.length > 0 && React.createElement("div", { style: { marginTop:20 } },
+            React.createElement("div", { style: { fontSize:14, fontWeight:800, color:"#ffdd00", marginBottom:10 } }, label("🎟 Coupon codes","🎟 أكواد الخصم")),
+            coupons.map((c, i) => React.createElement("div", { key: "c"+i, style: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px", background:"#0d0000", border:"1px dashed #ffdd00", borderRadius:12, marginBottom:8 } },
+                React.createElement("div", null,
+                    React.createElement("div", { style: { fontSize:15, fontWeight:900, color:"#ffdd00", fontFamily:"monospace" } }, c.code),
+                    React.createElement("div", { style: { fontSize:11, color:"#aaa", marginTop:2 } }, c.type === "percent" ? (c.value + "% " + label("off","خصم")) : (c.value + " " + label("SAR off","ر.س خصم")))),
+                React.createElement("button", { onClick: () => { try { navigator.clipboard.writeText(c.code); } catch(e){} }, style: { background:"#1a0000", border:"1px solid #3a0000", color:"#ffdd00", padding:"6px 14px", borderRadius:8, fontWeight:800, fontSize:12, cursor:"pointer" } }, label("Copy","نسخ"))))));
+}
+
+// Orders tab. Lists user's past orders; live ones (not yet completed) show a
+// Track button that opens OrderTrackingScreen.
+function OrdersTab({ orders, onTrack, isAr }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const LIVE = { new:1, pending:1, accepted:1, preparing:1, ready:1 };
+    const statusLabel = {
+        new: label("Placed","تم الاستلام"), pending: label("Placed","تم الاستلام"),
+        accepted: label("Accepted","تم القبول"), preparing: label("Preparing","قيد التحضير"),
+        ready: label("Ready for pickup","جاهز للاستلام"), completed: label("Completed","مكتمل"),
+        cancelled: label("Cancelled","ملغي"), refunded: label("Refunded","مسترجع"),
+    };
+    const statusColor = { new:"#ffdd00", pending:"#ffdd00", accepted:"#22c55e", preparing:"#f59e0b", ready:"#3b82f6", completed:"#6b7280", cancelled:"#ef4444", refunded:"#a855f7" };
+    if (!orders || orders.length === 0) {
+        return React.createElement("div", { style: { padding:"60px 20px 110px", textAlign:"center", color:"#666" } },
+            React.createElement("div", { style: { fontSize:64, marginBottom:14 } }, "🧾"),
+            React.createElement("div", { style: { fontSize:16, fontWeight:800, color:"#888" } }, label("No orders yet","لا توجد طلبات بعد")),
+            React.createElement("div", { style: { fontSize:12, color:"#555", marginTop:6 } }, label("Your order history will show up here.","سيظهر سجل طلباتك هنا.")));
+    }
+    return React.createElement("div", { style: { padding:"20px 18px 110px" } },
+        React.createElement("div", { style: { fontSize:22, fontWeight:900, color:"#fff", marginBottom:16 } }, label("My orders","طلباتي")),
+        orders.map((o, i) => {
+            const st = o.status || "pending";
+            const live = !!LIVE[st];
+            return React.createElement("div", { key: o.fbId || o.orderNo || i, style: { background:"#0d0000", border:"1px solid #2a0000", borderRadius:14, padding:14, marginBottom:10 } },
+                React.createElement("div", { style: { display:"flex", justifyContent:"space-between", alignItems:"flex-start" } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize:12, color:"#888" } }, "#" + (o.orderNo || "-")),
+                        React.createElement("div", { style: { fontSize:13, fontWeight:800, color:"#fff", marginTop:2 } }, (o.items || []).length + " " + label("items · ","عنصر · ") + (Number(o.total)||0).toFixed(2) + " " + label("SAR","ر.س")),
+                        React.createElement("div", { style: { fontSize:11, color:"#666", marginTop:4 } }, o.date ? new Date(o.date).toLocaleString() : "")),
+                    React.createElement("div", { style: { background: statusColor[st] + "22", color: statusColor[st], padding:"4px 10px", borderRadius:12, fontSize:10, fontWeight:900, textTransform:"uppercase", letterSpacing:1 } }, statusLabel[st] || st)),
+                live && o.fbId && React.createElement("button", { onClick: () => onTrack(o.fbId),
+                    style: { marginTop:12, width:"100%", padding:"10px 12px", background:"linear-gradient(135deg,#cc0000,#990000)", border:"2px solid #ffdd00", color:"#ffdd00", borderRadius:10, fontWeight:900, fontSize:13, cursor:"pointer" } },
+                    label("👁 Track this order","👁 تتبع الطلب")));
+        }));
+}
+
+// Live tracking screen. Subscribes to one order doc for realtime status.
+function OrderTrackingScreen({ orderId, onBack, isAr }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const [order, setOrder] = React.useState(null);
+    React.useEffect(() => {
+        if (!orderId || !window.FB || !window.FB.subscribeOrder) return;
+        const unsub = window.FB.subscribeOrder(orderId, (o) => setOrder(o));
+        return () => { if (unsub) try { unsub(); } catch(e) {} };
+    }, [orderId]);
+    const STEPS = [
+        { key:"pending",   labelEn:"Order placed",   labelAr:"تم استلام الطلب" },
+        { key:"accepted",  labelEn:"Accepted",       labelAr:"تم قبول الطلب" },
+        { key:"preparing", labelEn:"Preparing",      labelAr:"قيد التحضير" },
+        { key:"ready",     labelEn:"Ready for pickup", labelAr:"جاهز للاستلام" },
+        { key:"completed", labelEn:"Completed",      labelAr:"مكتمل" },
+    ];
+    const st = (order && order.status) || "pending";
+    const norm = st === "new" ? "pending" : st;
+    const cancelled = st === "cancelled" || st === "refunded";
+    let activeIdx = STEPS.findIndex(s => s.key === norm);
+    if (activeIdx < 0) activeIdx = 0;
+    return React.createElement("div", { style: { minHeight:"100vh", background:"#130000", paddingBottom:60 } },
+        React.createElement("div", { style: { display:"flex", alignItems:"center", gap:12, padding:"18px 18px 10px" } },
+            React.createElement("button", { onClick: onBack, style: { background:"#1a0000", border:"1px solid #2a0000", color:"#fff", padding:"8px 12px", borderRadius:10, cursor:"pointer" } }, "←"),
+            React.createElement("div", { style: { fontSize:18, fontWeight:900, color:"#fff" } }, label("Live tracking","التتبع المباشر"))),
+        !order && React.createElement("div", { style: { padding:"30px 20px", color:"#888", textAlign:"center" } },
+            React.createElement("div", { style: { fontSize:38, marginBottom:8 } }, "⏳"),
+            label("Loading order…","جاري تحميل الطلب…")),
+        order && React.createElement("div", { style: { padding:"12px 18px" } },
+            React.createElement("div", { style: { background:"#0d0000", border:"1px solid #2a0000", borderRadius:14, padding:16 } },
+                React.createElement("div", { style: { fontSize:12, color:"#888" } }, "#" + (order.orderNo || "-")),
+                React.createElement("div", { style: { fontSize:15, fontWeight:800, color:"#fff", marginTop:4 } }, (order.items || []).length + " " + label("items · ","عنصر · ") + (Number(order.total)||0).toFixed(2) + " " + label("SAR","ر.س"))),
+            cancelled && React.createElement("div", { style: { marginTop:16, padding:14, background:"rgba(239,68,68,0.12)", border:"1px solid #ef4444", borderRadius:12, color:"#ef4444", fontWeight:800, textAlign:"center" } },
+                label("This order was ", "تم ") + (st === "refunded" ? label("refunded","استرجاع الطلب") : label("cancelled","إلغاء الطلب"))),
+            !cancelled && React.createElement("div", { style: { marginTop:20 } },
+                STEPS.map((s, i) => {
+                    const done = i <= activeIdx;
+                    const isNow = i === activeIdx;
+                    return React.createElement("div", { key: s.key, style: { display:"flex", alignItems:"flex-start", gap:14, padding:"12px 0", opacity: done ? 1 : 0.35 } },
+                        React.createElement("div", { style: { position:"relative" } },
+                            React.createElement("div", { style: { width:34, height:34, borderRadius:"50%", background: done ? (isNow ? "#ffdd00" : "#22c55e") : "#1a0000", border: "2px solid " + (done ? "#ffdd00" : "#3a0000"), display:"flex", alignItems:"center", justifyContent:"center", color: done ? "#000" : "#666", fontWeight:900, fontSize:14 } }, done ? "✓" : (i+1)),
+                            i < STEPS.length - 1 && React.createElement("div", { style: { position:"absolute", left:16, top:34, width:2, height:36, background: i < activeIdx ? "#22c55e" : "#3a0000" } })),
+                        React.createElement("div", { style: { flex:1, paddingTop:6 } },
+                            React.createElement("div", { style: { fontSize:14, fontWeight:800, color: done ? "#fff" : "#666" } }, isAr ? s.labelAr : s.labelEn),
+                            isNow && React.createElement("div", { style: { fontSize:11, color:"#ffdd00", fontWeight:700, marginTop:3 } }, label("· in progress","· جاري"))));
+                }))));
+}
+
+// Notifications inbox. Reads notifications/{phone}/items and marks read on tap.
+function NotificationsSheet({ phone, onClose, isAr }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const [items, setItems] = React.useState([]);
+    React.useEffect(() => {
+        if (!phone || !window.FB || !window.FB.subscribeNotifications) return;
+        const unsub = window.FB.subscribeNotifications(phone, (list) => setItems(list));
+        return () => { if (unsub) try { unsub(); } catch(e) {} };
+    }, [phone]);
+    return React.createElement("div", { onClick: onClose, style: { position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", zIndex:1100, display:"flex", justifyContent:"flex-end" } },
+        React.createElement("div", { onClick: e=>e.stopPropagation(), style: { background:"#0d0000", width:"100%", maxWidth:420, height:"100%", overflow:"auto" } },
+            React.createElement("div", { style: { position:"sticky", top:0, padding:"16px 18px", borderBottom:"1px solid #2a0000", background:"#0d0000", display:"flex", justifyContent:"space-between", alignItems:"center" } },
+                React.createElement("div", { style: { fontSize:16, fontWeight:900, color:"#fff" } }, label("Notifications","الإشعارات")),
+                React.createElement("button", { onClick: onClose, style: { background:"none", border:"none", color:"#aaa", fontSize:22, cursor:"pointer" } }, "×")),
+            items.length === 0 && React.createElement("div", { style: { padding:"40px 20px", textAlign:"center", color:"#666" } },
+                React.createElement("div", { style: { fontSize:48, marginBottom:8 } }, "🔔"),
+                label("No notifications yet","لا توجد إشعارات بعد")),
+            items.map((n, i) => React.createElement("div", { key: n.id || i, onClick: () => { if (!n.readAt && window.FB && window.FB.markNotifRead) window.FB.markNotifRead(phone, n.id); }, style: { padding:"14px 18px", borderBottom:"1px solid #1a0000", cursor:"pointer", background: n.readAt ? "transparent" : "rgba(255,221,0,0.04)" } },
+                React.createElement("div", { style: { display:"flex", justifyContent:"space-between", gap:12 } },
+                    React.createElement("div", { style: { fontSize:14, fontWeight:800, color:"#fff" } }, isAr ? (n.titleAr || n.title) : (n.title || label("Update","تحديث"))),
+                    !n.readAt && React.createElement("span", { style: { width:8, height:8, borderRadius:"50%", background:"#ffdd00", flex:"0 0 auto", marginTop:6 } })),
+                React.createElement("div", { style: { fontSize:12, color:"#aaa", marginTop:4 } }, isAr ? (n.bodyAr || n.body) : (n.body || "")),
+                n.sentAt && React.createElement("div", { style: { fontSize:10, color:"#555", marginTop:6 } }, new Date(n.sentAt.seconds ? n.sentAt.seconds*1000 : n.sentAt).toLocaleString())))));
+}
+
+// Profile tab. Basic user card + settings toggles + logout.
+function ProfileTab({ user, orders, onLogout, isAr, lang, setLang, onOpenSupport, onOpenHistory, loyaltyPts }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const tier = getTier(loyaltyPts || 0);
+    return React.createElement("div", { style: { padding:"20px 18px 110px" } },
+        React.createElement("div", { style: { fontSize:22, fontWeight:900, color:"#fff", marginBottom:16 } }, label("Profile","الحساب")),
+        React.createElement("div", { style: { background:"linear-gradient(135deg,#cc0000,#660000)", padding:"20px 18px", borderRadius:16, border:"1px solid #4a0000" } },
+            React.createElement("div", { style: { fontSize:18, fontWeight:900, color:"#fff" } }, (user && user.name) || label("Guest","ضيف")),
+            React.createElement("div", { style: { fontSize:12, color:"rgba(255,255,255,0.7)", marginTop:4 } }, (user && user.phone) || ""),
+            React.createElement("div", { style: { marginTop:14, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", background:"rgba(0,0,0,0.3)", borderRadius:12 } },
+                React.createElement("div", null,
+                    React.createElement("div", { style: { fontSize:11, color:"#ffdd00", fontWeight:800, letterSpacing:1 } }, label("LOYALTY POINTS","نقاط الولاء")),
+                    React.createElement("div", { style: { fontSize:22, fontWeight:900, color:"#fff", marginTop:2 } }, loyaltyPts || 0)),
+                React.createElement("div", { style: { textAlign:"right" } },
+                    React.createElement("div", { style: { fontSize:11, color:"rgba(255,255,255,0.6)", fontWeight:700 } }, label("TIER","الفئة")),
+                    React.createElement("div", { style: { fontSize:14, fontWeight:900, color: tier === "Gold" ? "#ffdd00" : tier === "Silver" ? "#d0d0d0" : "#cd7f32" } }, tier)))),
+        React.createElement("div", { style: { marginTop:20, background:"#0d0000", border:"1px solid #2a0000", borderRadius:14, overflow:"hidden" } },
+            [
+                { icon:"🧾", label: label("Order history","سجل الطلبات"), onClick: onOpenHistory },
+                { icon:"🌐", label: label("Language: ","اللغة: ") + (isAr ? "العربية" : "English"), onClick: () => setLang(isAr ? "en" : "ar") },
+                { icon:"💬", label: label("Support","الدعم"), onClick: onOpenSupport },
+                { icon:"🚪", label: label("Log out","تسجيل الخروج"), onClick: onLogout, danger:true },
+            ].map((row, i) => React.createElement("button", { key:i, onClick: row.onClick, style: { width:"100%", padding:"14px 16px", background:"none", border:"none", borderBottom: i < 3 ? "1px solid #1a0000" : "none", color: row.danger ? "#ef4444" : "#fff", fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:12, textAlign:"start" } },
+                React.createElement("span", { style: { fontSize:18 } }, row.icon), row.label))));
+}
+
+// Support screen. WhatsApp/Call cards + short FAQ.
+function SupportSheet({ onClose, isAr }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const faqs = [
+        { q: label("Do you offer delivery?","هل تقدمون خدمة التوصيل؟"), a: label("Yes — from a growing set of branches. Pick delivery at checkout to see if you're in range.","نعم — من فروع مختارة. اختر التوصيل عند الدفع لمعرفة إذا كنت ضمن النطاق.") },
+        { q: label("How long does prep take?","كم يستغرق التحضير؟"), a: label("Around 15–20 minutes for pickup orders.","حوالي 15–20 دقيقة لطلبات الاستلام.") },
+        { q: label("Can I cancel my order?","هل يمكنني إلغاء الطلب؟"), a: label("Once the kitchen accepts, cancellation is at branch discretion. Contact us fast.","بعد قبول المطبخ، الإلغاء بحسب تقدير الفرع. تواصل بسرعة.") },
+    ];
+    return React.createElement("div", { onClick: onClose, style: { position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", zIndex:1100, display:"flex", alignItems:"flex-end", justifyContent:"center" } },
+        React.createElement("div", { onClick: e=>e.stopPropagation(), style: { background:"#0d0000", width:"100%", maxWidth:520, maxHeight:"88vh", overflow:"auto", borderRadius:"24px 24px 0 0", padding:0 } },
+            React.createElement("div", { style: { width:44, height:5, background:"#3a0000", borderRadius:3, margin:"12px auto 0" } }),
+            React.createElement("div", { style: { padding:"18px 20px 8px", display:"flex", justifyContent:"space-between", alignItems:"center" } },
+                React.createElement("div", { style: { fontSize:18, fontWeight:900, color:"#fff" } }, label("Support","الدعم")),
+                React.createElement("button", { onClick: onClose, style: { background:"none", border:"none", color:"#aaa", fontSize:22, cursor:"pointer" } }, "×")),
+            React.createElement("div", { style: { padding:"6px 20px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 } },
+                React.createElement("a", { href:"https://wa.me/966500959394", target:"_blank", rel:"noreferrer", style: { display:"block", padding:"16px", borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", color:"#fff", textDecoration:"none", fontWeight:800, textAlign:"center" } },
+                    React.createElement("div", { style: { fontSize:26, marginBottom:6 } }, "💬"),
+                    label("WhatsApp","واتساب")),
+                React.createElement("a", { href:"tel:+966500959394", style: { display:"block", padding:"16px", borderRadius:14, background:"linear-gradient(135deg,#cc0000,#990000)", color:"#fff", textDecoration:"none", fontWeight:800, textAlign:"center" } },
+                    React.createElement("div", { style: { fontSize:26, marginBottom:6 } }, "📞"),
+                    label("Call","اتصل"))),
+            React.createElement("div", { style: { padding:"18px 20px 6px", fontSize:13, fontWeight:800, color:"#ffdd00", letterSpacing:1 } }, label("FAQ","الأسئلة الشائعة")),
+            faqs.map((f, i) => React.createElement("details", { key:i, style: { padding:"12px 20px", borderTop:"1px solid #1a0000", color:"#fff" } },
+                React.createElement("summary", { style: { fontWeight:700, cursor:"pointer", fontSize:13 } }, f.q),
+                React.createElement("div", { style: { marginTop:8, color:"#aaa", fontSize:12, lineHeight:1.6 } }, f.a)))));
+}
+
+// Bottom tab bar. Renders 5 tabs; badge only on Notifications bell (handled
+// in header instead of here — this is nav only).
+function BottomTabBar({ tab, setTab, isAr, hasCart }) {
+    const label = (en, ar) => isAr ? ar : en;
+    const tabs = [
+        { id:"home",    icon:"🏠", en:"Home",    ar:"الرئيسية" },
+        { id:"menu",    icon:"🍗", en:"Menu",    ar:"القائمة" },
+        { id:"offers",  icon:"🎁", en:"Offers",  ar:"العروض" },
+        { id:"orders",  icon:"🧾", en:"Orders",  ar:"الطلبات" },
+        { id:"profile", icon:"👤", en:"Profile", ar:"حسابي" },
+    ];
+    return React.createElement("div", { style: { position:"fixed", bottom:0, left:0, right:0, background:"rgba(10,0,0,0.96)", borderTop:"1px solid #2a0000", backdropFilter:"blur(10px)", padding: hasCart ? "10px 8px 8px" : "8px 8px", zIndex:900, display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:2 } },
+        tabs.map(t => {
+            const active = tab === t.id;
+            return React.createElement("button", { key:t.id, onClick: () => setTab(t.id), style: { background:"none", border:"none", padding:"8px 2px", color: active ? "#ffdd00" : "#777", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontSize:10, fontWeight:700 } },
+                React.createElement("div", { style: { fontSize: active ? 22 : 18, transition:"all 0.15s" } }, t.icon),
+                React.createElement("span", null, isAr ? t.ar : t.en));
+        }));
+}
+
 function App() {
     const [splash, setSplash] = React.useState(true);
     const [orders, setOrders] = React.useState([]);
@@ -1302,57 +1680,134 @@ function App() {
         setMenu(newMenu);
         (_a = window.storage) === null || _a === void 0 ? void 0 : _a.set("menu-state", JSON.stringify(newMenu)).catch(() => { });
     };
+    // Phase 2 nav state \u2014 active tab, live-tracking screen, overlays.
+    const [tab, setTab] = React.useState("home");
+    const [trackingId, setTrackingId] = React.useState(null);
+    const [showNotifs, setShowNotifs] = React.useState(false);
+    const [showSupport, setShowSupport] = React.useState(false);
+    const [detailItem, setDetailItem] = React.useState(null);
+    const [notifUnread, setNotifUnread] = React.useState(0);
+
+    // Live unread count for the notifications bell.
+    React.useEffect(() => {
+        if (!user || !user.phone || !window.FB || !window.FB.subscribeNotifications) return;
+        const unsub = window.FB.subscribeNotifications(user.phone, (list) => {
+            setNotifUnread((list || []).filter(n => !n.readAt).length);
+        });
+        return () => { if (unsub) try { unsub(); } catch(e) {} };
+    }, [user && user.phone]);
+
+    const offersDoc = useSettingsDoc("offers", { items: [] });
+    const homeOffers = (offersDoc && offersDoc.items) || [];
+
+    const addToCart = (picked) => {
+        setCart(prev => {
+            const existing = prev[picked.id];
+            const next = Object.assign({}, prev);
+            next[picked.id] = existing
+                ? Object.assign({}, existing, { qty: (existing.qty || 1) + (picked.qty || 1) })
+                : Object.assign({}, picked, { qty: picked.qty || 1 });
+            return next;
+        });
+    };
+    const openProduct = (item) => {
+        if (hasProductDetail(item)) setDetailItem(item);
+        else addToCart(Object.assign({}, item, { qty: 1 }));
+    };
+    const logout = () => {
+        try { localStorage.removeItem("ba_user"); localStorage.removeItem("ba_branch"); } catch(e) {}
+        setUser(null); setBranchId(""); setStep(0); setCart({}); setTab("home");
+    };
+
     if (splash)
         return React.createElement(SplashScreen, { onDone: () => setSplash(false) });
     if (view === "admin")
         return React.createElement(AdminPanel, { menu: menu, setMenu: updateMenu, onExit: () => setView("app") });
-    return (React.createElement("div", { dir: isAr ? "rtl" : "ltr", style: { fontFamily: isAr ? "'Cairo', sans-serif" : "'Syne', sans-serif", background: "#130000", minHeight: "100vh", color: "#fff" } },
+
+    // Full-screen live tracking overrides everything else on the app view.
+    if (trackingId)
+        return React.createElement(OrderTrackingScreen, { orderId: trackingId, isAr: isAr, onBack: () => setTrackingId(null) });
+
+    const cartItems = Object.values(cart);
+    const hasCart = cartItems.length > 0;
+    const showTabs = step === 1 && branchId;
+    const loyaltyPts = (user && user.loyaltyPoints) || 0;
+
+    const header = React.createElement("header", { style: { background: "linear-gradient(90deg, #cc0000, #aa0000)", borderBottom: "3px solid #ffdd00", padding: "0 20px", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px rgba(0,0,0,0.6)" } },
+        React.createElement("div", { style: { maxWidth: 960, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 62 } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+                React.createElement("div", { style: { background: "#aa0000", border: "3px solid #ffdd00", borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 } }, "\uD83C\uDF57"),
+                React.createElement("div", null,
+                    React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "#ffdd00", letterSpacing: 1 } }, "BROAST ALBAHR"),
+                    React.createElement("div", { style: { fontSize: 12, color: "#fff", fontFamily: "Cairo", fontWeight: 700 } }, "\u0628\u0631\u0648\u0633\u062A \u0627\u0644\u0628\u062D\u0631"))),
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                showTabs && React.createElement("button", { onClick: () => setShowNotifs(true), title: "Notifications", style: { position:"relative", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,221,0,0.3)", color: "#ffdd00", padding: "6px 10px", borderRadius: 10, cursor: "pointer", fontSize: 16 } }, "\uD83D\uDD14",
+                    notifUnread > 0 && React.createElement("span", { style: { position:"absolute", top:-4, right:-4, background:"#ffdd00", color:"#000", borderRadius:"50%", minWidth:16, height:16, padding:"0 4px", fontSize:9, fontWeight:900, display:"flex", alignItems:"center", justifyContent:"center" } }, notifUnread)),
+                React.createElement("button", { onClick: () => setShowAdminLogin(true), style: { background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,221,0,0.3)", color: "rgba(255,221,0,0.7)", padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 14 } }, "\u2699\uFE0F"))));
+
+    // Tab-based main. Home | Menu | Offers | Orders | Profile.
+    const mainByTab = () => {
+        if (tab === "home") return React.createElement(HomeTab, {
+            menu: branchMenu, branch: branchId, branches: window.BRANCHES,
+            onChangeBranch: () => setBranchId(""),
+            onOpenProduct: openProduct,
+            onGoOffers: () => setTab("offers"),
+            onGoMenu: () => setTab("menu"),
+            restaurantClosed: restaurantClosed, isAr: isAr, offers: homeOffers,
+        });
+        if (tab === "menu") return React.createElement(MenuStep, { key: "menu-" + branchId, menu: branchMenu, cart: cart, setCart: setCart, user: user, isAr: isAr, lang: lang, setLang: setLang, onCheckout: () => setStep(2), branchId: branchId, onChangeBranch: () => setBranchId("") });
+        if (tab === "offers") return React.createElement(OffersTab, { isAr: isAr });
+        if (tab === "orders") return React.createElement(OrdersTab, { orders: orders, onTrack: (id) => setTrackingId(id), isAr: isAr });
+        if (tab === "profile") return React.createElement(ProfileTab, { user: user, orders: orders, onLogout: logout, isAr: isAr, lang: lang, setLang: setLang, onOpenSupport: () => setShowSupport(true), onOpenHistory: () => setShowHistory(true), loyaltyPts: loyaltyPts });
+        return null;
+    };
+
+    return React.createElement("div", { dir: isAr ? "rtl" : "ltr", style: { fontFamily: isAr ? "'Cairo', sans-serif" : "'Syne', sans-serif", background: "#130000", minHeight: "100vh", color: "#fff" } },
         React.createElement("style", null, BASE_STYLES),
-        React.createElement("header", { style: { background: "linear-gradient(90deg, #cc0000, #aa0000)", borderBottom: "3px solid #ffdd00", padding: "0 20px", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px rgba(0,0,0,0.6)" } },
-            React.createElement("div", { style: { maxWidth: 960, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 62 } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
-                    React.createElement("div", { style: { background: "#aa0000", border: "3px solid #ffdd00", borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 } }, "\uD83C\uDF57"),
-                    React.createElement("div", null,
-                        React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "#ffdd00", letterSpacing: 1 } }, "BROAST ALBAHR"),
-                        React.createElement("div", { style: { fontSize: 12, color: "#fff", fontFamily: "Cairo", fontWeight: 700 } }, "\u0628\u0631\u0648\u0633\u062A \u0627\u0644\u0628\u062D\u0631"))),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
-                    React.createElement("button", { onClick: () => setShowAdminLogin(true), style: { background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,221,0,0.3)", color: "rgba(255,221,0,0.7)", padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 14 } }, "\u2699\uFE0F"),
-                    React.createElement("button", { onClick: () => setShowHistory(true), style: { background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,221,0,0.3)", color: "#ffdd00", padding: "8px 10px", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, position: "relative" } },
-                        React.createElement("span", { style: { display: "block", width: 20, height: 2, background: "#ffdd00", borderRadius: 2 } }),
-                        React.createElement("span", { style: { display: "block", width: 20, height: 2, background: "#ffdd00", borderRadius: 2 } }),
-                        React.createElement("span", { style: { display: "block", width: 20, height: 2, background: "#ffdd00", borderRadius: 2 } }),
-                        orders.length > 0 && (React.createElement("span", { style: { position: "absolute", top: -4, right: -4, background: "#ffdd00", color: "#000", borderRadius: "50%", width: 16, height: 16, fontSize: 10, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center" } }, orders.length)))))),
-        step < 3 && React.createElement(StepBar, { step: step, isAr: isAr }),
-        step === 0 && (React.createElement(VerifyStep, { isAr: isAr, onVerified: (u) => { setUser(u); setStep(1); try { localStorage.setItem("ba_user", JSON.stringify(u)); } catch(e) {} } })),
-        step === 1 && !branchId && (React.createElement(BranchSelectStep, { isAr: isAr, orders: orders, userName: user && user.name, defaultBranch: "", onSelect: chooseBranch })),
-        step === 1 && branchId && (React.createElement(MenuStep, { key: "menu-" + branchId, menu: branchMenu, cart: cart, setCart: setCart, user: user, isAr: isAr, lang: lang, setLang: setLang, onCheckout: () => setStep(2), branchId: branchId, onChangeBranch: () => setBranchId("") })),
-        step === 2 && (React.createElement(CheckoutStep, { cart: cart, user: user, isAr: isAr, defaultBranch: branchId, onBack: () => setStep(1), onOrderPlaced: (orderData) => {
-                var _a;
-                // Prefer the global counter number that CheckoutStep already
-                // reserved; only fall back to the local counter if that failed.
-                const _localNo = String(orderCounterRef.current++).padStart(4, "0");
-                const newOrder = Object.assign(Object.assign({}, orderData), { orderNo: orderData.orderNo || _localNo, date: new Date().toISOString(), userName: user.name, userPhone: user.phone });
-                const updatedOrders = [...orders, newOrder];
-                setOrders(updatedOrders);
-                if(window.FB) window.FB.saveOrder(newOrder);
-                if(window.FB && user && user.phone) {
-                  var _total = newOrder.total || 0;
-                  var _pts = _total >= 500 ? 35 : _total >= 250 ? 20 : _total >= 100 ? 10 : 5;
-                  window.FB.saveCustomer({
-                    name: user.name,
-                    phone: user.phone,
-                    loyaltyDelta: _pts,
-                    address: orderData.address || "",
-                    locationLink: orderData.locationLink || ""
-                  });
-                }
-                setStep(3);
-            } })),
-        step === 3 && (React.createElement(OrderSuccess, { user: user, isAr: isAr, onNewOrder: () => { setCart({}); setStep(1); } })),
-        showAdminLogin && (React.createElement(AdminLogin, { onLogin: () => { setShowAdminLogin(false); setView("admin"); }, onCancel: () => setShowAdminLogin(false) })),
-        showHistory && (React.createElement(SideMenu, { orders: orders, isAr: isAr, onClose: () => setShowHistory(false) })),
-        // Tiny persistent app-version stamp
-        React.createElement("div", { style: { textAlign: "center", padding: "18px 8px 26px", fontSize: 10, color: "#4a4a4a", fontFamily: "'Montserrat',monospace", letterSpacing: 0.5 } }, "v" + APP_VERSION)));
+        header,
+        step < 3 && !showTabs && React.createElement(StepBar, { step: step, isAr: isAr }),
+        step === 0 && React.createElement(VerifyStep, { isAr: isAr, onVerified: (u) => { setUser(u); setStep(1); try { localStorage.setItem("ba_user", JSON.stringify(u)); } catch(e) {} } }),
+        step === 1 && !branchId && React.createElement(BranchSelectStep, { isAr: isAr, orders: orders, userName: user && user.name, defaultBranch: "", onSelect: chooseBranch }),
+        showTabs && mainByTab(),
+        step === 2 && React.createElement(CheckoutStep, { cart: cart, user: user, isAr: isAr, defaultBranch: branchId, onBack: () => setStep(1), onOrderPlaced: (orderData) => {
+            var _localNo = String(orderCounterRef.current++).padStart(4, "0");
+            var newOrder = Object.assign({}, orderData, { orderNo: orderData.orderNo || _localNo, date: new Date().toISOString(), userName: user.name, userPhone: user.phone, status: "pending" });
+            setOrders([...orders, newOrder]);
+            // Save then re-pull the customer's orders so the new one comes back
+            // with its real Firestore fbId (needed for the Track button) and
+            // any server-side normalization the branch app already applied.
+            if (window.FB) {
+                (async () => {
+                    try {
+                        await window.FB.saveOrder(newOrder);
+                        if (user && user.phone && window.FB.getCustomerOrders) {
+                            var past = await window.FB.getCustomerOrders(user.phone);
+                            var normalized = (past || []).map(function(o){
+                                var iso = o.date;
+                                if (!iso && o.createdAt && o.createdAt.seconds) iso = new Date(o.createdAt.seconds * 1000).toISOString();
+                                return Object.assign({}, o, { date: iso || new Date().toISOString(), total: Number(o.total)||0, items: o.items||[] });
+                            });
+                            setOrders(normalized);
+                        }
+                    } catch(e) { console.warn("post-save refresh failed:", e); }
+                })();
+            }
+            if (window.FB && user && user.phone) {
+                var _total = newOrder.total || 0;
+                var _pts = _total >= 500 ? 35 : _total >= 250 ? 20 : _total >= 100 ? 10 : 5;
+                window.FB.saveCustomer({ name: user.name, phone: user.phone, loyaltyDelta: _pts, address: orderData.address || "", locationLink: orderData.locationLink || "" });
+            }
+            setStep(3);
+        } }),
+        step === 3 && React.createElement(OrderSuccess, { user: user, isAr: isAr, onNewOrder: () => { setCart({}); setStep(1); setTab("orders"); } }),
+        showAdminLogin && React.createElement(AdminLogin, { onLogin: () => { setShowAdminLogin(false); setView("admin"); }, onCancel: () => setShowAdminLogin(false) }),
+        showHistory && React.createElement(SideMenu, { orders: orders, isAr: isAr, onClose: () => setShowHistory(false) }),
+        showNotifs && React.createElement(NotificationsSheet, { phone: user && user.phone, onClose: () => setShowNotifs(false), isAr: isAr }),
+        showSupport && React.createElement(SupportSheet, { onClose: () => setShowSupport(false), isAr: isAr }),
+        detailItem && React.createElement(ProductDetailSheet, { item: detailItem, onAdd: addToCart, onClose: () => setDetailItem(null), isAr: isAr }),
+        showTabs && React.createElement(BottomTabBar, { tab: tab, setTab: setTab, isAr: isAr, hasCart: hasCart }),
+        // Tiny persistent app-version stamp.
+        React.createElement("div", { style: { textAlign: "center", padding: showTabs ? "10px 8px 84px" : "18px 8px 26px", fontSize: 10, color: "#4a4a4a", fontFamily: "'Montserrat',monospace", letterSpacing: 0.5 } }, "v" + APP_VERSION));
 }
 // App is rendered by the bottom bootstrap block inside the try/catch that also
 // runs hideSplash and reports errors. Never call createRoot on #root more than
@@ -1619,6 +2074,44 @@ function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr, defaultBranch}) 
         onSettingsChange: function(cb){ return onSnapshot(doc(_db,"settings","restaurant"),function(s){ if(s.exists())cb(s.data()); }); },
         onOrdersChange: function(cb){ return onSnapshot(collection(_db,"orders"),function(s){ var o=s.docs.map(function(d){ return Object.assign({fbId:d.id},d.data()); }); o.sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); }); cb(o); }); },
         onCustomersChange: function(cb){ return onSnapshot(collection(_db,"customers"),function(s){ cb(s.docs.map(function(d){ return Object.assign({id:d.id},d.data()); })); }); },
+        // Phase 2 additions ---------------------------------------------------
+        // Live subscription to one order — powers the customer tracking screen.
+        subscribeOrder: function(id, cb){
+          try {
+            return onSnapshot(doc(_db, "orders", id), function(s){
+              if (s.exists()) cb(Object.assign({ fbId: s.id }, s.data()));
+              else cb(null);
+            });
+          } catch(e) { console.warn("subscribeOrder failed:", e); return function(){}; }
+        },
+        // Generic settings-doc read + live subscribe (used for offers/coupons).
+        getSettingsDoc: async function(key){
+          try { var s = await getDoc(doc(_db, "settings", key)); return s.exists() ? s.data() : null; }
+          catch(e) { return null; }
+        },
+        onSettingsDocChange: function(key, cb){
+          try { return onSnapshot(doc(_db, "settings", key), function(s){ if (s.exists()) cb(s.data()); }); }
+          catch(e) { return function(){}; }
+        },
+        // Customer notifications inbox — kept per-phone as a subcollection so
+        // the branch/owner side can push updates without leaking cross-user data.
+        subscribeNotifications: function(phone, cb){
+          try {
+            return onSnapshot(collection(_db, "notifications", phone, "items"), function(s){
+              var items = s.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); });
+              items.sort(function(a,b){
+                var av = (a.sentAt && a.sentAt.seconds) || 0;
+                var bv = (b.sentAt && b.sentAt.seconds) || 0;
+                return bv - av;
+              });
+              cb(items);
+            });
+          } catch(e) { return function(){}; }
+        },
+        markNotifRead: async function(phone, id){
+          try { await updateDoc(doc(_db, "notifications", phone, "items", id), { readAt: serverTimestamp() }); }
+          catch(e) {}
+        },
       };
       console.log("Firebase ready ✅");
     } catch(e) { console.log("Firebase unavailable:", e.message); }
