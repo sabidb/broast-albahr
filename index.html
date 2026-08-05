@@ -78,6 +78,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 
+  <!-- 2b. Framer Motion (async, ESM) — components fall back to plain divs until loaded -->
+  <script type="module">
+    try {
+      const mod = await import("https://esm.sh/framer-motion@11?deps=react@18.2.0,react-dom@18.2.0");
+      window.FM = { motion: mod.motion, AnimatePresence: mod.AnimatePresence };
+      window.dispatchEvent(new Event("fm-ready"));
+    } catch(e) { console.warn("Framer Motion failed to load:", e); }
+  </script>
+
   <!-- 3. App -->
   <script>
     try {
@@ -393,7 +402,9 @@ function VariantPopup({ item, isAr, onClose, onAdd }) {
                 isAr ? "أضف للسلة" : "Add to Cart")));
 }
 
-function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, restaurantClosed }) {
+function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, restaurantClosed, branchId, onChangeBranch }) {
+    const _branch = (window.BRANCHES || []).find(b => b.id === branchId);
+    const _branchLabel = _branch ? (isAr ? _branch.nameAr : _branch.nameEn) : "";
     const [activeCategory, setActiveCategory] = React.useState(Object.keys(menu)[0]);
     const [variantItem, setVariantItem] = React.useState(null);
     const hasVariants = (item) => /Normal.*Spicy|Spicy.*Normal|With Cheese|مع جن|عادي.*حراق|حراق.*عادي|Green Pepper|فلفل/i.test(item.nameAr + item.name);
@@ -412,13 +423,18 @@ function MenuStep({ menu, cart, setCart, onCheckout, user, isAr, lang, setLang, 
     const total = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
     const itemCount = cartItems.reduce((s, i) => s + i.qty, 0);
     return (React.createElement("div", null,
-        React.createElement("div", { style: { background: "#0a0000", padding: "10px 20px", borderBottom: "1px solid #2a0000", display: "flex", justifyContent: "space-between", alignItems: "center" } },
-            React.createElement("div", { style: { fontSize: 13, color: "#888" } },
+        React.createElement("div", { style: { background: "#0a0000", padding: "10px 20px", borderBottom: "1px solid #2a0000", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } },
+            React.createElement("div", { style: { fontSize: 13, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 } },
                 "\uD83D\uDC64 ",
                 React.createElement("span", { style: { color: "#ffdd00", fontWeight: 700 } }, user.name),
                 React.createElement("span", { style: { color: "#444", margin: "0 6px" } }, "\u00B7"),
                 React.createElement("span", { style: { color: "#666" } }, user.phone)),
-            React.createElement("button", { onClick: () => setLang(isAr ? "en" : "ar"), style: { background: "rgba(255,221,0,0.1)", border: "1px solid rgba(255,221,0,0.3)", color: "#ffdd00", padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 700, fontSize: 12 } }, isAr ? "EN" : "عربي")),
+            React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexShrink: 0 } },
+                _branchLabel && React.createElement("button", { onClick: onChangeBranch, title: isAr ? "تغيير الفرع" : "Change branch",
+                    style: { background: "rgba(76,175,80,0.12)", border: "1px solid rgba(76,175,80,0.4)", color: "#4caf50", padding: "4px 10px", borderRadius: 20, cursor: "pointer", fontWeight: 700, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 5, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                    "🏪 ", React.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, _branchLabel), " ▾"),
+                React.createElement("button", { onClick: () => setLang(isAr ? "en" : "ar"), style: { background: "rgba(255,221,0,0.1)", border: "1px solid rgba(255,221,0,0.3)", color: "#ffdd00", padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 700, fontSize: 12 } }, isAr ? "EN" : "عربي")
+            )),
         React.createElement("div", { style: { background: "linear-gradient(135deg, #cc0000 0%, #880000 60%, #130000 100%)", padding: "24px 20px 18px", textAlign: "center", borderBottom: "1px solid #330000" } },
             React.createElement("div", { style: { fontSize: 40, marginBottom: 4 } }, "\uD83C\uDF57"),
             React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, color: "#ffdd00" } }, isAr ? "اختر طلبك" : "Choose Your Order"),
@@ -1022,6 +1038,172 @@ function SideMenu({ orders, onClose, isAr }) {
                         React.createElement("div", { style: { fontSize: 11, color: "#444", marginTop: 12, textAlign: "center" } }, isAr ? "* لاسترداد المكافآت تواصل معنا عبر واتساب" : "* To redeem rewards contact us via WhatsApp")))))),
         selectedOrder && (React.createElement(Invoice, { order: selectedOrder, isAr: isAr, onClose: () => setSelectedOrder(null) }))));
 }
+// ─── FRAMER MOTION BRIDGE ────────────────────────────────────────────────────
+// Framer Motion loads asynchronously via ESM in <head>. Components that
+// want its animations call useFramerMotion() and gracefully render as
+// plain divs (with CSS fallbacks) until it's ready.
+function useFramerMotion() {
+    const [fm, setFm] = React.useState(typeof window !== "undefined" ? (window.FM || null) : null);
+    React.useEffect(() => {
+        if (fm) return;
+        if (typeof window === "undefined") return;
+        const check = () => { if (window.FM) setFm(window.FM); };
+        check();
+        window.addEventListener("fm-ready", check);
+        const t = setInterval(check, 200);
+        return () => { window.removeEventListener("fm-ready", check); clearInterval(t); };
+    }, [fm]);
+    return fm;
+}
+
+// ─── BRANCH-AWARE MENU HELPERS ───────────────────────────────────────────────
+// Items may be scoped to specific branches (item.branches = ["kakkiyah",...] or
+// ["all"]) and their availability tracked per branch (item.availability =
+// { kakkiyah: true, subhani: false, ... }). Legacy items with neither field
+// behave as if they were available at all branches.
+function itemBranches(i) {
+    return (Array.isArray(i.branches) && i.branches.length) ? i.branches : ["all"];
+}
+function itemAppliesToBranch(i, branchId) {
+    const bs = itemBranches(i);
+    return bs.indexOf("all") >= 0 || bs.indexOf(branchId) >= 0;
+}
+function itemAvailableAtBranch(i, branchId) {
+    if (i.availability && Object.prototype.hasOwnProperty.call(i.availability, branchId)) {
+        return !!i.availability[branchId];
+    }
+    return i.available !== false;
+}
+function menuForBranch(menu, branchId) {
+    if (!branchId) return menu;
+    const out = {};
+    for (const cat in menu) {
+        const items = menu[cat].filter(i => itemAppliesToBranch(i, branchId));
+        if (!items.length) continue;
+        out[cat] = items.map(i => Object.assign({}, i, { available: itemAvailableAtBranch(i, branchId) }));
+    }
+    return out;
+}
+
+// ─── STEP 0.5: SELECT BRANCH (animated) ──────────────────────────────────────
+function BranchSelectStep({ onSelect, isAr, orders, defaultBranch, userName }) {
+    const fm = useFramerMotion();
+    const M = fm ? fm.motion : { div: "div", h2: "h2", p: "p", button: "button" };
+    const [selected, setSelected] = React.useState(defaultBranch || "");
+    const [distances, setDistances] = React.useState({});
+    const [locStatus, setLocStatus] = React.useState("idle"); // idle | asked | ok | denied
+
+    React.useEffect(() => {
+        if (!navigator.geolocation) return;
+        setLocStatus("asked");
+        navigator.geolocation.getCurrentPosition(function (pos) {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            const d = {};
+            (window.BRANCHES || []).forEach(b => { d[b.id] = window.calcDistance(lat, lng, b.lat, b.lng); });
+            setDistances(d); setLocStatus("ok");
+        }, function () { setLocStatus("denied"); }, { maximumAge: 60000, timeout: 8000 });
+    }, []);
+
+    // Their most-visited branch, if we have order history
+    const mostVisited = React.useMemo(() => {
+        const counts = {};
+        (orders || []).forEach(o => { if (o.branch) counts[o.branch] = (counts[o.branch] || 0) + 1; });
+        let best = null, max = 0;
+        Object.keys(counts).forEach(k => { if (counts[k] > max) { max = counts[k]; best = k; } });
+        return best;
+    }, [orders]);
+
+    const minKm = Object.values(distances).length ? Math.min.apply(null, Object.values(distances)) : null;
+
+    // Framer-Motion variants — used when FM is loaded; otherwise CSS keyframes kick in.
+    const stagger = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.11, delayChildren: 0.15 } } };
+    const cardVar = { hidden: { opacity: 0, y: 22, scale: 0.94 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 260, damping: 24 } } };
+
+    const cardEl = (b, i) => {
+        const isSel = selected === b.id;
+        const km = distances[b.id];
+        const isNearest = km !== undefined && minKm !== null && km === minKm;
+        const isUsual = mostVisited === b.id;
+        const props = fm
+            ? { variants: cardVar, whileHover: { scale: 1.02, y: -3 }, whileTap: { scale: 0.97 } }
+            : { style: { animation: "bsSlide 0.55s " + (0.15 + i * 0.12) + "s cubic-bezier(0.22,0.9,0.32,1) both" } };
+        return React.createElement(M.div, Object.assign({
+            key: b.id,
+            onClick: () => setSelected(b.id),
+        }, props, {
+            style: Object.assign({}, props.style || {}, {
+                position: "relative",
+                background: isSel ? "linear-gradient(135deg, rgba(214,0,0,0.22), rgba(80,0,0,0.35))" : "rgba(20,4,4,0.75)",
+                border: "2px solid " + (isSel ? "#FFD400" : "rgba(255,255,255,0.06)"),
+                borderRadius: 22, padding: "18px 18px", cursor: "pointer",
+                boxShadow: isSel ? "0 20px 60px rgba(255,212,0,0.18), inset 0 1px 0 rgba(255,255,255,0.05)" : "0 8px 28px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)",
+                display: "flex", alignItems: "center", gap: 14, backdropFilter: "blur(10px)"
+            })
+        }),
+            React.createElement("div", { style: { width: 54, height: 54, borderRadius: 16, background: isSel ? "linear-gradient(135deg, #FFD400, #E67E00)" : "#2a0000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, boxShadow: isSel ? "0 8px 22px rgba(255,212,0,0.35)" : "none", transition: "all 0.25s" } }, "🏪"),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 15, color: isSel ? "#FFD400" : "#F4F4F4", marginBottom: 5, fontFamily: isAr ? "Cairo" : "Syne", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, isAr ? b.nameAr : b.nameEn),
+                React.createElement("div", { style: { fontSize: 11.5, color: "#888", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
+                    React.createElement("span", null, "📞 " + (b.whatsapp || "").replace(/^966/, "0")),
+                    km !== undefined && React.createElement("span", { style: { color: isNearest ? "#4caf50" : "#888" } }, "· 📍 " + km.toFixed(1) + " km"),
+                    isNearest && React.createElement("span", { style: { background: "rgba(76,175,80,0.14)", color: "#4caf50", padding: "2px 8px", borderRadius: 8, fontSize: 10, fontWeight: 800, letterSpacing: 0.3 } }, isAr ? "الأقرب" : "NEAREST"),
+                    isUsual && React.createElement("span", { style: { background: "rgba(255,212,0,0.12)", color: "#FFD400", padding: "2px 8px", borderRadius: 8, fontSize: 10, fontWeight: 800, letterSpacing: 0.3 } }, isAr ? "المعتاد" : "USUAL")
+                )
+            ),
+            React.createElement("div", { style: { width: 24, height: 24, borderRadius: "50%", border: "2px solid " + (isSel ? "#FFD400" : "#3a0000"), background: isSel ? "#FFD400" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s", color: "#000", fontSize: 13, fontWeight: 900 } }, isSel ? "✓" : "")
+        );
+    };
+
+    const rootProps = fm ? { initial: { opacity: 0 }, animate: { opacity: 1 } } : {};
+
+    return React.createElement(React.Fragment, null,
+        // Scoped animations for the CSS fallback path.
+        React.createElement("style", null,
+            "@keyframes bsSlide{0%{opacity:0;transform:translateY(22px) scale(0.94)}100%{opacity:1;transform:translateY(0) scale(1)}}" +
+            "@keyframes bsFade{0%{opacity:0;transform:translateY(-10px)}100%{opacity:1;transform:translateY(0)}}"
+        ),
+        React.createElement(M.div, Object.assign({}, rootProps, {
+            style: { minHeight: "calc(100vh - 62px)", padding: "22px 18px 120px", background: "radial-gradient(ellipse at 50% -10%, #360808 0%, #150202 55%, #060000 100%)", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }
+        }),
+            // Ambient glow
+            React.createElement("div", { style: { position: "absolute", top: -140, left: "50%", transform: "translateX(-50%)", width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle, rgba(214,0,0,0.35) 0%, transparent 65%)", filter: "blur(30px)", pointerEvents: "none" } }),
+
+            React.createElement(M.div, Object.assign({}, fm ? { initial: { opacity: 0, y: -12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.5 } } : { style: { animation: "bsFade 0.5s both" } }, {
+                style: Object.assign({ textAlign: "center", marginBottom: 24, marginTop: 6, position: "relative", zIndex: 1 }, fm ? {} : { animation: "bsFade 0.5s both" })
+            }),
+                React.createElement("div", { style: { fontSize: 44, marginBottom: 10 } }, "🏬"),
+                React.createElement("h2", { style: { fontFamily: isAr ? "Cairo" : "Syne", fontWeight: 900, fontSize: 24, color: "#FFD400", letterSpacing: -0.5, marginBottom: 8 } },
+                    userName ? (isAr ? "أهلاً " + userName + "!" : "Hi " + userName + "!") : (isAr ? "اختر الفرع" : "Choose Your Branch")),
+                React.createElement("p", { style: { color: "#B4B4B4", fontSize: 13, maxWidth: 340, margin: "0 auto", lineHeight: 1.55 } },
+                    isAr ? "الأصناف المتوفرة تختلف حسب الفرع — اختر الفرع أولاً لترى قائمته." : "Menu availability varies by branch — pick a branch first to see its menu.")
+            ),
+
+            locStatus === "asked" && React.createElement("div", { style: { textAlign: "center", color: "#666", fontSize: 11.5, marginBottom: 12, position: "relative", zIndex: 1 } }, "📍 Locating you…"),
+
+            React.createElement(M.div, Object.assign({}, fm ? { variants: stagger, initial: "hidden", animate: "show" } : {}, {
+                style: { display: "flex", flexDirection: "column", gap: 12, maxWidth: 460, margin: "0 auto", width: "100%", position: "relative", zIndex: 1 }
+            }), (window.BRANCHES || []).map((b, i) => cardEl(b, i))),
+
+            React.createElement(M.div, Object.assign({}, fm ? { initial: { opacity: 0, y: 40 }, animate: { opacity: selected ? 1 : 0, y: selected ? 0 : 40 }, transition: { type: "spring", stiffness: 320, damping: 30 } } : { style: { opacity: selected ? 1 : 0.35, transform: selected ? "translateY(0)" : "translateY(20px)", transition: "all 0.3s" } }, {
+                style: { position: "sticky", bottom: 16, maxWidth: 460, margin: "26px auto 0", width: "100%", zIndex: 2 }
+            }),
+                React.createElement("button", {
+                    onClick: () => { if (selected) onSelect(selected); },
+                    disabled: !selected,
+                    style: {
+                        width: "100%", padding: "16px 18px", borderRadius: 18, border: "2px solid " + (selected ? "#FFD400" : "#3a0000"),
+                        background: selected ? "linear-gradient(135deg, #D60000, #8B0000)" : "#150202",
+                        color: selected ? "#FFD400" : "#555", fontWeight: 900, fontSize: 15, cursor: selected ? "pointer" : "not-allowed",
+                        fontFamily: isAr ? "Cairo" : "Syne", letterSpacing: 0.3,
+                        boxShadow: selected ? "0 16px 44px rgba(214,0,0,0.45)" : "none",
+                        transition: "all 0.25s"
+                    }
+                }, selected ? (isAr ? "متابعة للقائمة ←" : "Continue to Menu →") : (isAr ? "اختر فرعاً أولاً" : "Pick a branch to continue"))
+            )
+        )
+    );
+}
+
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 function App() {
     const [splash, setSplash] = React.useState(true);
@@ -1040,7 +1222,24 @@ function App() {
     const [lang, setLang] = React.useState("ar");
     const [view, setView] = React.useState("app"); // app | admin
     const [showAdminLogin, setShowAdminLogin] = React.useState(false);
+    const [branchId, setBranchId] = React.useState(() => {
+        try { return localStorage.getItem("ba_branch") || ""; } catch(e) { return ""; }
+    });
     const isAr = lang === "ar";
+    const chooseBranch = (id) => {
+        setBranchId(id);
+        try { localStorage.setItem("ba_branch", id); } catch(e) {}
+        // Drop any cart items that don't apply to the new branch — otherwise
+        // the customer could carry over an item this branch doesn't serve.
+        setCart(prev => {
+            const kept = {};
+            Object.values(prev).forEach(it => {
+                if (itemAppliesToBranch(it, id) && itemAvailableAtBranch(it, id)) kept[it.id] = it;
+            });
+            return kept;
+        });
+    };
+    const branchMenu = React.useMemo(() => menuForBranch(menu, branchId), [menu, branchId]);
     React.useEffect(() => {
         let unsubMenu, unsubSettings;
         (async () => {
@@ -1122,8 +1321,9 @@ function App() {
                         orders.length > 0 && (React.createElement("span", { style: { position: "absolute", top: -4, right: -4, background: "#ffdd00", color: "#000", borderRadius: "50%", width: 16, height: 16, fontSize: 10, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center" } }, orders.length)))))),
         step < 3 && React.createElement(StepBar, { step: step, isAr: isAr }),
         step === 0 && (React.createElement(VerifyStep, { isAr: isAr, onVerified: (u) => { setUser(u); setStep(1); try { localStorage.setItem("ba_user", JSON.stringify(u)); } catch(e) {} } })),
-        step === 1 && (React.createElement(MenuStep, { menu: menu, cart: cart, setCart: setCart, user: user, isAr: isAr, lang: lang, setLang: setLang, onCheckout: () => setStep(2) })),
-        step === 2 && (React.createElement(CheckoutStep, { cart: cart, user: user, isAr: isAr, onBack: () => setStep(1), onOrderPlaced: (orderData) => {
+        step === 1 && !branchId && (React.createElement(BranchSelectStep, { isAr: isAr, orders: orders, userName: user && user.name, defaultBranch: "", onSelect: chooseBranch })),
+        step === 1 && branchId && (React.createElement(MenuStep, { key: "menu-" + branchId, menu: branchMenu, cart: cart, setCart: setCart, user: user, isAr: isAr, lang: lang, setLang: setLang, onCheckout: () => setStep(2), branchId: branchId, onChangeBranch: () => setBranchId("") })),
+        step === 2 && (React.createElement(CheckoutStep, { cart: cart, user: user, isAr: isAr, defaultBranch: branchId, onBack: () => setStep(1), onOrderPlaced: (orderData) => {
                 var _a;
                 const newOrder = Object.assign(Object.assign({}, orderData), { orderNo: String(orderCounterRef.current++).padStart(4, "0"), date: new Date().toISOString(), userName: user.name, userPhone: user.phone });
                 const updatedOrders = [...orders, newOrder];
@@ -1188,8 +1388,8 @@ function SideAIChat({isAr}) {
   );
 }
 
-function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr}) {
-  const [branch, setBranch] = React.useState("");
+function CheckoutStep({cart, user, onBack, onOrderPlaced, isAr, defaultBranch}) {
+  const [branch, setBranch] = React.useState(defaultBranch || "");
   const [orderType, setOrderType] = React.useState("pickup");
   const [payMethod, setPayMethod] = React.useState("cash");
   const [note, setNote] = React.useState("");
