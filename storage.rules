@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// Broast Al Bahr — product image uploads from the admin panel.
+// The admin is gated by an app password (not Firebase Auth), so writes to the
+// items/ folder are open. Images are public-readable so customers can see them.
+// Only image files up to 5 MB are accepted.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /items/{imageId} {
+      allow read: if true;
+      allow write: if request.resource == null
+                   || (request.resource.size < 5 * 1024 * 1024
+                       && request.resource.contentType.matches('image/.*'));
+    }
+    // Everything else is locked down.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
