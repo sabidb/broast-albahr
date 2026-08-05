@@ -3,14 +3,35 @@ import { money, formatDate } from '../lib/utils';
 import ItemImage from './ItemImage';
 import type { Order } from './Invoice';
 
+const LIVE: Set<string> = new Set(['pending', 'accepted', 'preparing', 'ready', 'new']);
+
+function statusLabel(s: string | undefined, isAr: boolean) {
+  const v = (s || 'pending').toLowerCase();
+  const map: Record<string, [string, string, string]> = {
+    pending: ['⏳', 'Pending', 'قيد الانتظار'],
+    new: ['⏳', 'Pending', 'قيد الانتظار'],
+    accepted: ['👍', 'Accepted', 'تم القبول'],
+    preparing: ['👨‍🍳', 'Preparing', 'قيد التحضير'],
+    ready: ['🍽️', 'Ready', 'جاهز'],
+    completed: ['✅', 'Completed', 'مكتمل'],
+    done: ['✅', 'Completed', 'مكتمل'],
+    cancelled: ['❌', 'Cancelled', 'ملغى'],
+    refunded: ['💸', 'Refunded', 'مسترد'],
+  };
+  const row = map[v] || map.pending;
+  return { icon: row[0], text: isAr ? row[2] : row[1] };
+}
+
 export default function OrdersScreen({
   orders,
   isAr,
   onReorder,
+  onTrack,
 }: {
   orders: Order[];
   isAr: boolean;
   onReorder: () => void;
+  onTrack: (o: Order) => void;
 }) {
   return (
     <div className="mx-auto max-w-[560px] px-4 pb-32 pt-5">
@@ -31,40 +52,64 @@ export default function OrdersScreen({
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {orders.map((o, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              whileInView={{ opacity: 1, y: 0, scale: 1 }}
-              viewport={{ once: true, amount: 0.2 }}
-              transition={{ delay: Math.min(i * 0.05, 0.3), duration: 0.45, ease: [0.22, 0.9, 0.28, 1] }}
-              whileHover={{ y: -3 }}
-              className="rounded-3xl bg-white p-4 shadow-soft ring-1 ring-brand-line"
-            >
-              <div className="flex items-center justify-between">
-                <span className="rounded-full bg-brand-red/8 px-2.5 py-1 text-[13px] font-black text-brand-red">
-                  #{o.orderNo}
-                </span>
-                <span className="text-[11px] font-bold text-brand-muted">{formatDate(o.date)}</span>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {o.items.slice(0, 5).map((it, k) => (
-                  <span key={k} className="flex items-center gap-1 rounded-lg bg-brand-cream px-2 py-1 text-[12px] font-bold text-brand-ink2">
-                    <span className="inline-block h-4 w-4 shrink-0 overflow-hidden rounded">
-                      <ItemImage item={it} iconSize={11} />
-                    </span>
-                    ×{it.qty}
+          {orders.map((o, i) => {
+            const st = statusLabel(o.status, isAr);
+            const live = LIVE.has((o.status || 'pending').toLowerCase());
+            return (
+              <motion.div
+                key={o.fbId || i}
+                initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                viewport={{ once: true, amount: 0.2 }}
+                transition={{ delay: Math.min(i * 0.05, 0.3), duration: 0.45, ease: [0.22, 0.9, 0.28, 1] }}
+                whileHover={{ y: -3 }}
+                className="rounded-3xl bg-white p-4 shadow-soft ring-1 ring-brand-line"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="rounded-full bg-brand-red/8 px-2.5 py-1 text-[13px] font-black text-brand-red">
+                    #{o.orderNo}
                   </span>
-                ))}
-              </div>
-              <div className="mt-3 flex items-center justify-between border-t border-brand-line pt-3">
-                <span className="text-[12px] font-bold text-brand-muted">
-                  {o.orderType === 'pickup' ? (isAr ? '🏃 استلام' : '🏃 Pickup') : isAr ? '🛵 توصيل' : '🛵 Delivery'}
-                </span>
-                <span className="text-[16px] font-black text-brand-red">{money(o.totals.total)}</span>
-              </div>
-            </motion.div>
-          ))}
+                  <span className="text-[11px] font-bold text-brand-muted">{formatDate(o.date)}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {o.items.slice(0, 5).map((it, k) => (
+                    <span
+                      key={k}
+                      className="flex items-center gap-1 rounded-lg bg-brand-cream px-2 py-1 text-[12px] font-bold text-brand-ink2"
+                    >
+                      <span className="inline-block h-4 w-4 shrink-0 overflow-hidden rounded">
+                        <ItemImage item={it} iconSize={11} />
+                      </span>
+                      ×{it.qty}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-3 flex items-center justify-between border-t border-brand-line pt-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-bold text-brand-muted">
+                      {o.orderType === 'pickup' ? (isAr ? '🏃 استلام' : '🏃 Pickup') : isAr ? '🛵 توصيل' : '🛵 Delivery'}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-black ${
+                        live ? 'bg-brand-red/10 text-brand-red' : 'bg-brand-green/10 text-brand-green'
+                      }`}
+                    >
+                      {st.icon} {st.text}
+                    </span>
+                  </div>
+                  <span className="text-[16px] font-black text-brand-red">{money(o.totals.total)}</span>
+                </div>
+                {live && (
+                  <button
+                    onClick={() => onTrack(o)}
+                    className="mt-3 w-full rounded-2xl border-2 border-brand-red bg-brand-red/6 py-2.5 text-[13px] font-black text-brand-red transition hover:bg-brand-red hover:text-white"
+                  >
+                    {isAr ? '📍 تتبع الطلب' : '📍 Track order'}
+                  </button>
+                )}
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>

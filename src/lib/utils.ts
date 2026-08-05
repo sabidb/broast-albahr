@@ -1,6 +1,6 @@
 import { DELIVERY_ZONES, VAT_RATE, type MenuItem, type Branch } from './data';
 
-export const APP_VERSION = '3.1.0';
+export const APP_VERSION = '3.2.0';
 
 /** Haversine distance in km between two lat/lng points. */
 export function calcDistance(aLat: number, aLng: number, bLat: number, bLng: number): number {

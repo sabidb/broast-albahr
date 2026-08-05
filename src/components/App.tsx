@@ -8,15 +8,18 @@ import CheckoutStep from './CheckoutStep';
 import OrderSuccess from './OrderSuccess';
 import RewardsScreen from './RewardsScreen';
 import OrdersScreen from './OrdersScreen';
+import OrderTrackingScreen from './OrderTrackingScreen';
 import AccountScreen from './AccountScreen';
 import NavDrawer from './NavDrawer';
 import AdminPanel, { AdminLogin } from './AdminPanel';
 import StreakModal from './StreakModal';
+import BranchSelectStep from './BranchSelectStep';
+import { NotificationsBell, NotificationsSheet } from './NotificationsSheet';
 
 export type Tab = 'menu' | 'rewards' | 'orders' | 'account';
 import { pageVariants } from './motion';
 import { money, APP_VERSION } from '../lib/utils';
-import { DEFAULT_MENU, type Menu } from '../lib/data';
+import { DEFAULT_MENU, BRANCHES, type Menu } from '../lib/data';
 import { FB } from '../lib/fb';
 import { tickStreak, loadStreak, type StreakState, type StreakTick } from '../lib/streak';
 import {
@@ -34,6 +37,7 @@ type User = { name: string; phone: string };
 export default function App() {
   const [splash, setSplash] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [branchId, setBranchId] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu>(DEFAULT_MENU);
   const [cart, setCart] = useState<Cart>({});
   const [lang, setLang] = useState<'ar' | 'en'>('ar');
@@ -56,6 +60,8 @@ export default function App() {
     try {
       const s = localStorage.getItem('ba_user');
       if (s) setUser(JSON.parse(s));
+      const b = localStorage.getItem('ba_branch');
+      if (b) setBranchId(b);
     } catch {}
     const t = tickStreak();
     setStreak(t.state);
@@ -80,6 +86,55 @@ export default function App() {
     };
   }, []);
 
+  // Load persisted orders + subscribe to live updates for this user
+  useEffect(() => {
+    if (!user?.phone) return;
+    let cancelled = false;
+    (async () => {
+      const rows = await FB.getCustomerOrders(user.phone);
+      if (cancelled) return;
+      const shaped: Order[] = rows.map((r: any) => ({
+        orderNo: r.orderNo || '000000',
+        date: r.date || new Date((r.createdAt?.seconds || 0) * 1000).toISOString(),
+        user: { name: r.userName || user.name, phone: r.userPhone || user.phone },
+        branchObj: r.branchObj || { nameEn: r.branch || '' },
+        orderType: r.orderType || 'pickup',
+        pickupTime: r.pickupTime || '',
+        paymentMethod: r.paymentMethod || 'cash',
+        couponCode: r.couponCode || '',
+        items: r.items || [],
+        totals: r.totals || { subtotal: 0, pFee: 0, dFee: 0, discount: 0, vat: 0, total: r.total || 0 },
+        fbId: r.fbId,
+        status: r.status || 'pending',
+        rating: r.rating || null,
+      }));
+      setOrders(shaped);
+    })();
+    // Live subscribe to any status changes on this user's orders
+    const unsub = FB.onOrdersChange((all) => {
+      const mine = all.filter((o: any) => o.userPhone === user.phone);
+      setOrders((prev) => {
+        const map = new Map(prev.map((o) => [o.fbId || o.orderNo, o]));
+        mine.forEach((o: any) => {
+          const k = o.fbId || o.orderNo;
+          const existing = map.get(k);
+          if (existing) {
+            map.set(k, {
+              ...existing,
+              status: o.status || existing.status,
+              rating: o.rating || existing.rating,
+            });
+          }
+        });
+        return Array.from(map.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+      });
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [user?.phone, user?.name]);
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3200);
@@ -92,28 +147,50 @@ export default function App() {
     } catch {}
   };
 
-  const onOrderPlaced = (payload: any) => {
+  const onOrderPlaced = async (payload: any) => {
+    // Reserve atomic 6-digit order-no first so the popup + Firestore match.
+    const orderNo = await FB.nextOrderNo();
     const order: Order = {
       ...payload,
-      orderNo: String(orderCounter.current++).padStart(4, '0'),
+      orderNo,
       date: new Date().toISOString(),
+      status: 'pending',
     };
     setOrders((prev) => [order, ...prev]);
     setLastOrder(order);
     setCheckoutOpen(false);
-    FB.saveOrder({
+    const saved = await FB.saveOrder({
       ...payload,
       userName: payload.user.name,
       userPhone: payload.user.phone,
       total: order.totals.total,
-      orderNo: order.orderNo,
+      orderNo,
       date: order.date,
     });
+    if (saved.fbId) {
+      // patch the local copies with the Firestore id so we can subscribe/track live.
+      setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, fbId: saved.fbId } : o)));
+      setLastOrder((cur) => (cur && cur.orderNo === orderNo ? { ...cur, fbId: saved.fbId } : cur));
+    }
     // earn loyalty points
     const earned = pointsForOrder(order.totals.total, loyalty.lifetime);
-    setLoyalty(addPoints(earned, `Order #${order.orderNo}`));
-    if (user?.phone) FB.saveCustomer({ name: user.name, phone: user.phone, loyaltyPoints: earned });
+    setLoyalty(addPoints(earned, `Order #${orderNo}`));
+    if (user?.phone)
+      FB.saveCustomer({
+        name: user.name,
+        phone: user.phone,
+        loyaltyPoints: earned,
+        lastAddress: payload.address || '',
+        locationLink: payload.locationLink || '',
+      });
     showToast(isAr ? `+${earned} نقطة 🎁` : `+${earned} points 🎁`);
+  };
+
+  const [trackOrder, setTrackOrder] = useState<Order | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const onRateOrder = (fbId: string, stars: number, comment: string) => {
+    FB.saveOrderRating(fbId, stars, comment);
+    setOrders((prev) => prev.map((o) => (o.fbId === fbId ? { ...o, rating: { stars, comment } } : o)));
   };
 
   const onRedeem = (r: Reward) => {
@@ -130,6 +207,8 @@ export default function App() {
 
   const cartCount = Object.values(cart).reduce((s, i) => s + (i.qty || 0), 0);
   const cartTotal = Object.values(cart).reduce((s, i) => s + i.price * (i.qty || 0), 0);
+  const currentBranch = BRANCHES.find((b) => b.id === branchId);
+  const branchLabel = currentBranch ? (isAr ? currentBranch.nameAr : currentBranch.nameEn) : null;
 
   // scroll-reactive header + progress bar
   const { scrollY, scrollYProgress } = useScroll();
@@ -150,6 +229,10 @@ export default function App() {
         <VerifyStep isAr={isAr} onVerified={onVerified} />
       </div>
     );
+  }
+
+  if (!branchId) {
+    return <BranchSelectStep isAr={isAr} onSelect={(id) => setBranchId(id)} />;
   }
 
   if (view === 'admin') {
@@ -206,6 +289,7 @@ export default function App() {
             </button>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationsBell phone={user.phone} isAr={isAr} onOpen={() => setNotifOpen(true)} />
             {/* My Orders — kept out of the hamburger */}
             <button
               onClick={() => setTab('orders')}
@@ -241,7 +325,9 @@ export default function App() {
             <MenuStep menu={menu} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
           )}
           {tab === 'rewards' && <RewardsScreen loyalty={loyalty} streak={streak} isAr={isAr} onRedeem={onRedeem} />}
-          {tab === 'orders' && <OrdersScreen orders={orders} isAr={isAr} onReorder={() => setTab('menu')} />}
+          {tab === 'orders' && (
+            <OrdersScreen orders={orders} isAr={isAr} onReorder={() => setTab('menu')} onTrack={(o) => setTrackOrder(o)} />
+          )}
           {tab === 'account' && (
             <AccountScreen
               user={user}
@@ -307,9 +393,16 @@ export default function App() {
             streak={streak}
             active={tab}
             isAr={isAr}
+            branchName={branchLabel}
             onNavigate={setTab}
             onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
             onAdmin={() => setShowAdminLogin(true)}
+            onChangeBranch={() => {
+              try {
+                localStorage.removeItem('ba_branch');
+              } catch {}
+              setBranchId(null);
+            }}
             onLogout={() => {
               try {
                 localStorage.removeItem('ba_user');
@@ -337,6 +430,7 @@ export default function App() {
               cart={cart}
               user={user}
               isAr={isAr}
+              defaultBranchId={branchId}
               onBack={() => setCheckoutOpen(false)}
               onOrderPlaced={onOrderPlaced}
             />
@@ -356,6 +450,25 @@ export default function App() {
               setTab('menu');
             }}
           />
+        )}
+      </AnimatePresence>
+
+      {/* order tracking overlay */}
+      <AnimatePresence>
+        {trackOrder && (
+          <OrderTrackingScreen
+            order={trackOrder}
+            isAr={isAr}
+            onClose={() => setTrackOrder(null)}
+            onRate={onRateOrder}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* notifications sheet */}
+      <AnimatePresence>
+        {notifOpen && user && (
+          <NotificationsSheet phone={user.phone} isAr={isAr} onClose={() => setNotifOpen(false)} />
         )}
       </AnimatePresence>
 

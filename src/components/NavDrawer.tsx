@@ -9,10 +9,12 @@ export default function NavDrawer({
   streak,
   active,
   isAr,
+  branchName,
   onNavigate,
   onToggleLang,
   onAdmin,
   onLogout,
+  onChangeBranch,
   onClose,
 }: {
   user: { name: string; phone: string };
@@ -20,10 +22,12 @@ export default function NavDrawer({
   streak: StreakState;
   active: Tab;
   isAr: boolean;
+  branchName?: string | null;
   onNavigate: (t: Tab) => void;
   onToggleLang: () => void;
   onAdmin: () => void;
   onLogout: () => void;
+  onChangeBranch: () => void;
   onClose: () => void;
 }) {
   const tier = tierFor(loyalty.lifetime);
@@ -37,6 +41,16 @@ export default function NavDrawer({
     { id: 'account', icon: '👤', label: isAr ? 'حسابي' : 'My Account' },
   ];
   const actions = [
+    {
+      icon: '📍',
+      label: branchName
+        ? (isAr ? 'تغيير الفرع' : 'Change branch') + ' · ' + branchName
+        : isAr
+          ? 'تغيير الفرع'
+          : 'Change branch',
+      onClick: onChangeBranch,
+      danger: false,
+    },
     { icon: '🌐', label: isAr ? 'English' : 'عربي', onClick: onToggleLang, danger: false },
     { icon: '⚙️', label: isAr ? 'لوحة الإدارة' : 'Admin panel', onClick: onAdmin, danger: false },
     { icon: '🚪', label: isAr ? 'تسجيل الخروج' : 'Log out', onClick: onLogout, danger: true },
@@ -107,7 +121,7 @@ export default function NavDrawer({
               key={i}
               onClick={() => {
                 a.onClick();
-                if (a.danger || a.icon === '⚙️') onClose();
+                if (a.danger || a.icon === '⚙️' || a.icon === '📍') onClose();
               }}
               className="flex items-center gap-3 rounded-2xl px-3 py-3 text-start"
             >

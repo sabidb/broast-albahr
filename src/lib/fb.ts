@@ -13,6 +13,13 @@ import {
   updateDoc,
   serverTimestamp,
   increment,
+  runTransaction,
+  arrayUnion,
+  arrayRemove,
+  query,
+  where,
+  orderBy,
+  limit,
   type Firestore,
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
@@ -41,6 +48,13 @@ try {
 
 type Unsub = () => void;
 const noop: Unsub = () => {};
+
+export interface SavedAddress {
+  id: string;
+  label: string;
+  line: string;
+  locationLink?: string;
+}
 
 export const FB = {
   ready: () => !!db,
@@ -89,14 +103,49 @@ export const FB = {
     } catch {}
   },
 
-  async saveOrder(o: Record<string, unknown>) {
-    if (!db) return;
+  /** Atomic 6-digit order counter starting at 100000. */
+  async nextOrderNo(): Promise<string> {
+    if (!db) return String(100000 + Math.floor(Math.random() * 900000));
     try {
-      await addDoc(collection(db, 'orders'), { ...o, createdAt: serverTimestamp(), status: 'new' });
-    } catch {}
+      const ref = doc(db, 'counters', 'orderNo');
+      const next = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        const cur = snap.exists() ? (snap.data().value as number) : 99999;
+        const nxt = cur + 1;
+        tx.set(ref, { value: nxt, updatedAt: serverTimestamp() }, { merge: true });
+        return nxt;
+      });
+      return String(next).padStart(6, '0');
+    } catch {
+      return String(100000 + (Date.now() % 900000)).padStart(6, '0');
+    }
   },
 
-  async saveCustomer(d: { name: string; phone: string; loyaltyPoints?: number; firstSeen?: string }) {
+  /** Save a new order. Returns { fbId, orderNo }. Status starts as 'pending'. */
+  async saveOrder(o: Record<string, unknown>): Promise<{ fbId: string | null; orderNo: string }> {
+    const orderNo = (o.orderNo as string) || (await FB.nextOrderNo());
+    if (!db) return { fbId: null, orderNo };
+    try {
+      const ref = await addDoc(collection(db, 'orders'), {
+        ...o,
+        orderNo,
+        createdAt: serverTimestamp(),
+        status: 'pending',
+      });
+      return { fbId: ref.id, orderNo };
+    } catch {
+      return { fbId: null, orderNo };
+    }
+  },
+
+  async saveCustomer(d: {
+    name: string;
+    phone: string;
+    loyaltyPoints?: number;
+    firstSeen?: string;
+    lastAddress?: string;
+    locationLink?: string;
+  }) {
     if (!db) return;
     try {
       const data: Record<string, unknown> = { ...d, lastSeen: serverTimestamp() };
@@ -105,16 +154,49 @@ export const FB = {
     } catch {}
   },
 
+  async getCustomer(phone: string): Promise<Record<string, unknown> | null> {
+    if (!db) return null;
+    try {
+      const s = await getDoc(doc(db, 'customers', phone));
+      return s.exists() ? (s.data() as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async addCustomerAddress(phone: string, a: SavedAddress) {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'customers', phone), { addresses: arrayUnion(a) }, { merge: true });
+    } catch {}
+  },
+
+  async removeCustomerAddress(phone: string, a: SavedAddress) {
+    if (!db) return;
+    try {
+      await updateDoc(doc(db, 'customers', phone), { addresses: arrayRemove(a) });
+    } catch {}
+  },
+
   async getCustomerOrders(phone: string): Promise<Record<string, unknown>[]> {
     if (!db) return [];
     try {
-      const snap = await getDocs(collection(db, 'orders'));
+      const q1 = query(collection(db, 'orders'), where('userPhone', '==', phone));
+      const snap = await getDocs(q1);
       return snap.docs
         .map((d) => ({ fbId: d.id, ...d.data() }))
-        .filter((o: any) => o.userPhone === phone)
         .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
     } catch {
-      return [];
+      // fallback: scan (older security rules)
+      try {
+        const snap = await getDocs(collection(db, 'orders'));
+        return snap.docs
+          .map((d) => ({ fbId: d.id, ...d.data() }))
+          .filter((o: any) => o.userPhone === phone)
+          .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      } catch {
+        return [];
+      }
     }
   },
 
@@ -143,10 +225,32 @@ export const FB = {
     }
   },
 
+  /** Live single-order subscription for the customer tracker. */
+  subscribeOrder(fbId: string, cb: (o: any | null) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(doc(db, 'orders', fbId), (s) => {
+        cb(s.exists() ? { fbId: s.id, ...s.data() } : null);
+      });
+    } catch {
+      return noop;
+    }
+  },
+
   async updateOrderStatus(fbId: string, status: string) {
     if (!db) return;
     try {
       await updateDoc(doc(db, 'orders', fbId), { status, updatedAt: serverTimestamp() });
+    } catch {}
+  },
+
+  /** Save customer rating + comment on a completed order. */
+  async saveOrderRating(fbId: string, stars: number, comment: string) {
+    if (!db) return;
+    try {
+      await updateDoc(doc(db, 'orders', fbId), {
+        rating: { stars, comment, at: serverTimestamp() },
+      });
     } catch {}
   },
 
@@ -158,6 +262,71 @@ export const FB = {
       });
     } catch {
       return noop;
+    }
+  },
+
+  /** Admin writes a notification into a customer's inbox. */
+  async sendNotification(phone: string, n: { title: string; titleAr?: string; body: string; bodyAr?: string; kind?: string; orderNo?: string }) {
+    if (!db) return;
+    try {
+      await addDoc(collection(db, 'notifications', phone, 'items'), {
+        ...n,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    } catch {}
+  },
+
+  subscribeNotifications(phone: string, cb: (rows: any[]) => void): Unsub {
+    if (!db) return noop;
+    try {
+      const q1 = query(collection(db, 'notifications', phone, 'items'), orderBy('createdAt', 'desc'), limit(50));
+      return onSnapshot(q1, (s) => {
+        cb(s.docs.map((d) => ({ fbId: d.id, ...d.data() })));
+      });
+    } catch {
+      return noop;
+    }
+  },
+
+  async markNotificationRead(phone: string, fbId: string) {
+    if (!db) return;
+    try {
+      await updateDoc(doc(db, 'notifications', phone, 'items', fbId), { read: true });
+    } catch {}
+  },
+
+  async markAllNotificationsRead(phone: string) {
+    if (!db) return;
+    try {
+      const snap = await getDocs(collection(db, 'notifications', phone, 'items'));
+      await Promise.all(
+        snap.docs
+          .filter((d) => !d.data().read)
+          .map((d) => updateDoc(d.ref, { read: true })),
+      );
+    } catch {}
+  },
+
+  /** Live customer-facing announcement banner. */
+  onAnnouncementChange(cb: (a: { active: boolean; text: string; textAr: string; kind?: string } | null) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(doc(db, 'settings', 'announcement'), (s) => {
+        cb(s.exists() ? (s.data() as any) : null);
+      });
+    } catch {
+      return noop;
+    }
+  },
+
+  async getAnnouncement() {
+    if (!db) return null;
+    try {
+      const s = await getDoc(doc(db, 'settings', 'announcement'));
+      return s.exists() ? s.data() : null;
+    } catch {
+      return null;
     }
   },
 };

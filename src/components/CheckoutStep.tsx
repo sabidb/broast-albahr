@@ -11,13 +11,14 @@ interface Props {
   onBack: () => void;
   onOrderPlaced: (o: any) => void;
   isAr: boolean;
+  defaultBranchId?: string | null;
 }
 
 type LocStatus = 'idle' | 'loading' | 'found' | 'unavailable' | 'error';
 
-export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr }: Props) {
+export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, defaultBranchId }: Props) {
   const items = Object.values(cart) as MenuItem[];
-  const [branch, setBranch] = useState('');
+  const [branch, setBranch] = useState(defaultBranchId || '');
   const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('pickup');
   const [pay, setPay] = useState('cash');
   const [note, setNote] = useState('');

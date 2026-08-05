@@ -6,13 +6,16 @@ export interface Order {
   orderNo: string;
   date: string;
   user: { name: string; phone: string };
-  branchObj: { nameEn: string };
+  branchObj: { nameEn: string; nameAr?: string };
   orderType: 'pickup' | 'delivery';
   pickupTime: string;
   paymentMethod: string;
   couponCode: string;
   items: MenuItem[];
   totals: { subtotal: number; pFee: number; dFee: number; discount: number; vat: number; total: number };
+  fbId?: string | null;
+  status?: string;
+  rating?: { stars: number; comment: string } | null;
 }
 
 export default function Invoice({ order, onClose, isAr }: { order: Order; onClose: () => void; isAr: boolean }) {
