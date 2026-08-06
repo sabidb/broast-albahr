@@ -15,6 +15,7 @@ import AdminPanel, { AdminLogin } from './AdminPanel';
 import StreakModal from './StreakModal';
 import BranchSelectStep from './BranchSelectStep';
 import { NotificationsBell, NotificationsSheet } from './NotificationsSheet';
+import AnnouncementBanner from './AnnouncementBanner';
 
 export type Tab = 'menu' | 'rewards' | 'orders' | 'account';
 import { pageVariants } from './motion';
@@ -317,6 +318,9 @@ export default function App() {
           </div>
         </div>
       </motion.header>
+
+      {/* live manager announcement */}
+      <AnnouncementBanner isAr={isAr} />
 
       {/* tab content */}
       <AnimatePresence mode="wait">
