@@ -40,10 +40,6 @@ export const VALID_COUPONS: Record<string, Coupon> = {
 
 export const PAYMENT_METHODS: [string, string, string][] = [
   ['cash', '💵', 'Cash'],
-  ['mada', '💳', 'Mada'],
-  ['apple', '🍎', 'Apple Pay'],
-  ['visa', '💳', 'Visa'],
-  ['samsung', '📱', 'Samsung Pay'],
 ];
 
 export const PICKUP_SLOTS = ['ASAP', '15 min', '30 min', '45 min', '1 hour'];
