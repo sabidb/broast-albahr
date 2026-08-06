@@ -134,3 +134,8 @@
 [dir='rtl'] .font-medium { font-weight: 300; }
 [dir='rtl'] { font-weight: 300; }
 
+/* Hide the App-level cart FAB while any item-detail / checkout / order-modal
+   sheet has claimed the bottom of the viewport, so its Add-to-Cart bar is
+   never overlapped by the "View Cart" pill. Toggled from ItemDetail. */
+body.no-cart-fab .cart-fab { display: none !important; }
+

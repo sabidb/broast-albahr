@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import ItemImage from './ItemImage';
 import { detectKind, piecesOf, accompaniment, kindGradient } from '../lib/items';
@@ -54,6 +54,15 @@ export default function ItemDetail({
 
   const [selected, setSelected] = useState<number | null>(variants.length ? 0 : null);
   const [qty, setQty] = useState(1);
+
+  // Hide the App-level "View Cart" FAB while this sheet is open so it
+  // never overlaps the Add-to-Cart bar.
+  useEffect(() => {
+    document.body.classList.add('no-cart-fab');
+    return () => {
+      document.body.classList.remove('no-cart-fab');
+    };
+  }, []);
 
   const baseName = (isAr ? item.nameAr : item.name)
     .replace(/\s*\/\s*(Normal|Spicy|عادي|حراق|With Cheese|مع جن|Green Pepper|فلفل أخضر)/gi, '')
