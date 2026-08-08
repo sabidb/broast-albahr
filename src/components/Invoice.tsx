@@ -57,12 +57,6 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
           (i.note ? `<div style="font-size:11px;color:#666;padding-left:12px;font-style:italic">📝 ${i.note}</div>` : ''),
       )
       .join('');
-    const termsHTML = INVOICE_TERMS
-      .map(
-        (t, i) =>
-          `<div class="term"><div class="tnum">${i + 1}</div><div class="ten">${t.en}</div><div class="tar">${t.ar}</div></div>`,
-      )
-      .join('');
     w.document.write(`<html><head><title>Invoice ${order.orderNo}</title><style>
       body{font-family:Arial,sans-serif;margin:0;padding:20px;color:#000;background:#fff}
       .center{text-align:center}.logo{background:#cc0000;color:#ffdd00;padding:16px;border-radius:8px;margin-bottom:16px}
@@ -70,14 +64,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       .divider{border:none;border-top:1px dashed #ccc;margin:12px 0}
       .row{display:flex;justify-content:space-between;margin:5px 0;font-size:13px}
       .row.total{font-size:17px;font-weight:900;border-top:2px solid #000;padding-top:8px;margin-top:8px}
-      .footer{text-align:center;margin-top:16px;font-size:11px;color:#999}
-      .terms{margin-top:16px;padding:10px;border:2px solid #cc0000;border-radius:8px;background:#fff5f5}
-      .terms h3{margin:0 0 8px;text-align:center;color:#cc0000;font-size:12px}
-      .term{display:grid;grid-template-columns:20px 1fr 1fr;gap:6px;margin-bottom:6px;padding:6px;background:#fff;border-radius:4px}
-      .tnum{background:#cc0000;color:#fff;width:18px;height:18px;border-radius:50%;text-align:center;font-size:10px;font-weight:900;line-height:18px}
-      .ten{font-size:9px;font-weight:900;text-align:left}
-      .tar{font-size:9px;font-weight:900;text-align:right;direction:rtl}
-      .agree{text-align:center;font-size:9px;font-weight:900;color:#cc0000;margin-top:6px}</style></head><body>
+      .footer{text-align:center;margin-top:16px;font-size:11px;color:#999}</style></head><body>
       <div class="center logo"><h2>BROAST AL BAHR · بروست البحر</h2><p>${order.branchObj.nameEn}</p></div>
       <div class="center"><div style="font-size:11px;color:#999">ORDER</div>
       <div style="font-size:20px;font-weight:900">#${order.orderNo}</div>
@@ -93,10 +80,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       ${t.dFee ? `<div class="row"><span>Delivery:</span><span>${money(t.dFee)}</span></div>` : ''}
       ${t.discount ? `<div class="row" style="color:green"><span>Discount (${order.couponCode}):</span><span>- ${money(t.discount)}</span></div>` : ''}
       <div class="row total"><span>TOTAL:</span><span>${money(t.total)}</span></div>
-      <div class="footer"><p style="font-size:10px;color:#999">Prices include 15% VAT (${money(t.vat)})</p></div>
-      <div class="terms"><h3>⚠️ Terms &amp; Conditions · الشروط والأحكام</h3>${termsHTML}
-      <div class="agree">By placing an order you AGREE to all terms above · بتقديم طلبك فإنك توافق على جميع الشروط أعلاه</div></div>
-      <div class="footer"><p>شكراً لزيارتكم · Thank you!</p><p>VAT Reg. No: 311459656500003</p></div>
+      <div class="footer"><p style="font-size:10px;color:#999">Prices include 15% VAT (${money(t.vat)})</p><p>شكراً لزيارتكم · Thank you!</p><p>VAT Reg. No: 311459656500003</p></div>
       </body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 400);
