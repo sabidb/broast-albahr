@@ -149,8 +149,8 @@ export default function App() {
   };
 
   const onOrderPlaced = async (payload: any) => {
-    // Reserve atomic 6-digit order-no first so the popup + Firestore match.
-    const orderNo = await FB.nextOrderNo();
+    // Reserve atomic per-branch 6-digit order-no first so the popup + Firestore match.
+    const orderNo = await FB.nextOrderNo(payload.branch);
     const order: Order = {
       ...payload,
       orderNo,

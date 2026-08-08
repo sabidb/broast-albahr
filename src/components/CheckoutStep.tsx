@@ -349,13 +349,15 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
                 [isAr ? 'رسوم المنصة' : 'Platform Fee', money(totals.pFee)],
                 ...(orderType === 'delivery' && totals.dFee ? [[isAr ? 'التوصيل' : 'Delivery', money(totals.dFee)]] : []),
                 ...(discount ? [[isAr ? 'الخصم' : 'Discount', '- ' + money(discount)]] : []),
-                [isAr ? 'ضريبة 15%' : 'VAT 15%', money(totals.vat)],
               ].map(([l, v], i) => (
                 <div key={i} className="mb-1.5 flex justify-between text-xs font-bold text-brand-muted">
                   <span>{l}</span>
                   <span>{v}</span>
                 </div>
               ))}
+              <div className="mb-1.5 text-[10px] font-semibold text-brand-muted/70">
+                {isAr ? `الأسعار شاملة ضريبة القيمة المضافة 15% (${money(totals.vat)})` : `Prices include 15% VAT (${money(totals.vat)})`}
+              </div>
               <div className="mt-2.5 flex justify-between border-t border-brand-line pt-3 text-xl font-black text-brand-ink">
                 <span>{isAr ? 'الإجمالي' : 'Total'}</span>
                 <span className="text-brand-red">{money(totals.total)}</span>

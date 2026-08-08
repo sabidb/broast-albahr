@@ -221,10 +221,9 @@ export default function OrderSuccess({
                   <span>- {money(t.discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span>{isAr ? 'ضريبة القيمة المضافة 15%' : 'VAT 15%'}</span>
-                <span>{money(t.vat)}</span>
-              </div>
+            </div>
+            <div className="mt-1 text-[10px] font-medium text-brand-muted/70">
+              {isAr ? `الأسعار شاملة ضريبة القيمة المضافة 15% (${money(t.vat)})` : `Prices include 15% VAT (${money(t.vat)})`}
             </div>
             <div className="mt-2 flex items-baseline justify-between border-t border-brand-line pt-2">
               <span className="text-[14px] font-black text-brand-ink">{isAr ? 'الإجمالي' : 'Total'}</span>

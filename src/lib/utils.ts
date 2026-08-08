@@ -1,6 +1,6 @@
 import { DELIVERY_ZONES, VAT_RATE, type MenuItem, type Branch } from './data';
 
-export const APP_VERSION = '3.4.2';
+export const APP_VERSION = '3.5.0';
 
 /** Haversine distance in km between two lat/lng points. */
 export function calcDistance(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -49,6 +49,7 @@ export interface OrderTotals {
   discount: number;
   vat: number;
   total: number;
+  vatInclusive?: boolean;
 }
 
 export function computeTotals(
@@ -63,7 +64,7 @@ export function computeTotals(
   const base = Math.max(0, subtotal + pFee + dFee - discount);
   const vat = Math.round((base * VAT_RATE) / (1 + VAT_RATE) * 100) / 100;
   const total = Math.round(base * 100) / 100;
-  return { subtotal, pFee, dFee, discount, vat, total };
+  return { subtotal, pFee, dFee, discount, vat, total, vatInclusive: true };
 }
 
 export interface OrderPayload {
@@ -105,7 +106,7 @@ export function buildWhatsAppMessage(o: OrderPayload): string {
   lines.push(`Platform Fee: ${money(t.pFee)}`);
   if (o.orderType === 'delivery' && t.dFee) lines.push(`Delivery: ${money(t.dFee)}`);
   if (t.discount) lines.push(`Discount (${o.couponCode}): - ${money(t.discount)}`);
-  lines.push(`VAT 15%: ${money(t.vat)}`);
   lines.push(`TOTAL: ${money(t.total)}`);
+  lines.push(`(Prices include 15% VAT · ${money(t.vat)})`);
   return lines.join(nl);
 }

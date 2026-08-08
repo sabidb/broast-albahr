@@ -51,9 +51,8 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       <div class="row"><span>Platform Fee:</span><span>${money(t.pFee)}</span></div>
       ${t.dFee ? `<div class="row"><span>Delivery:</span><span>${money(t.dFee)}</span></div>` : ''}
       ${t.discount ? `<div class="row" style="color:green"><span>Discount (${order.couponCode}):</span><span>- ${money(t.discount)}</span></div>` : ''}
-      <div class="row"><span>VAT (15%):</span><span>${money(t.vat)}</span></div>
       <div class="row total"><span>TOTAL:</span><span>${money(t.total)}</span></div>
-      <div class="footer"><p>شكراً لزيارتكم · Thank you!</p><p>VAT Reg. No: 311459656500003</p></div>
+      <div class="footer"><p style="font-size:10px;color:#999">Prices include 15% VAT (${money(t.vat)})</p><p>شكراً لزيارتكم · Thank you!</p><p>VAT Reg. No: 311459656500003</p></div>
       </body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 400);
@@ -112,7 +111,9 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
             <Row l="Platform Fee" v={money(t.pFee)} />
             {!!t.dFee && <Row l="Delivery" v={money(t.dFee)} />}
             {!!t.discount && <Row l={`Discount (${order.couponCode})`} v={'- ' + money(t.discount)} green />}
-            <Row l="VAT (15%)" v={money(t.vat)} />
+            <div className="mb-1 text-[10px] text-gray-400">
+              {isAr ? `الأسعار شاملة ضريبة القيمة المضافة 15% (${money(t.vat)})` : `Prices include 15% VAT (${money(t.vat)})`}
+            </div>
             <div className="mt-2 flex justify-between border-t-2 border-black pt-2 text-[17px] font-black">
               <span>TOTAL</span>
               <span>{money(t.total)}</span>

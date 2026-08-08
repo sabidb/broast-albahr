@@ -11,22 +11,23 @@ interface Props {
   onRate?: (fbId: string, stars: number, comment: string) => void;
 }
 
-type Status = 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'refunded';
+type Status = 'pending' | 'accepted' | 'preparing' | 'cooking' | 'almost_ready' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
-const STEPS: { key: Status; en: string; ar: string; icon: string }[] = [
-  { key: 'pending', en: 'Placed', ar: 'تم الاستلام', icon: '📥' },
-  { key: 'accepted', en: 'Accepted', ar: 'تم القبول', icon: '👍' },
-  { key: 'preparing', en: 'Preparing', ar: 'قيد التحضير', icon: '👨‍🍳' },
-  { key: 'ready', en: 'Ready', ar: 'جاهز للاستلام', icon: '🍽️' },
+const STEPS: { key: Status; en: string; ar: string; icon: string; eta?: string; etaAr?: string }[] = [
+  { key: 'pending', en: 'Waiting for confirmation', ar: 'في انتظار التأكيد', icon: '⏳' },
+  { key: 'preparing', en: 'Your order is preparing', ar: 'طلبك قيد التحضير', icon: '👨‍🍳', eta: 'Will be ready in ~15 min', etaAr: 'سيكون جاهزاً خلال ~15 دقيقة' },
+  { key: 'cooking', en: 'Cooking currently', ar: 'يتم الطبخ حالياً', icon: '🔥', eta: '~10 min remaining', etaAr: 'متبقي ~10 دقائق' },
+  { key: 'almost_ready', en: 'Your order is almost ready', ar: 'طلبك على وشك الجهوز', icon: '⏰', eta: '~5 min remaining', etaAr: 'متبقي ~5 دقائق' },
+  { key: 'ready', en: 'Your order is ready', ar: 'طلبك جاهز', icon: '🍽️' },
   { key: 'completed', en: 'Completed', ar: 'مكتمل', icon: '✅' },
 ];
 
-/** Legacy admin values normalize to canonical statuses. */
 function normalize(s?: string): Status {
   if (!s) return 'pending';
   const v = s.toLowerCase();
   if (v === 'new') return 'pending';
   if (v === 'done') return 'completed';
+  if (v === 'accepted') return 'preparing';
   if ((STEPS as any).find((x: any) => x.key === v)) return v as Status;
   if (v === 'cancelled' || v === 'canceled') return 'cancelled';
   if (v === 'refunded') return 'refunded';
@@ -138,9 +139,16 @@ export default function OrderTrackingScreen({ order, isAr, onClose, onRate }: Pr
                       {isAr ? s.ar : s.en}
                     </div>
                     {active && (
-                      <div className="mt-0.5 text-[12px] font-semibold text-brand-red">
-                        {isAr ? 'قيد التنفيذ الآن…' : 'in progress now…'}
-                      </div>
+                      <>
+                        <div className="mt-0.5 text-[12px] font-semibold text-brand-red">
+                          {isAr ? 'قيد التنفيذ الآن…' : 'in progress now…'}
+                        </div>
+                        {s.eta && (
+                          <div className="mt-0.5 text-[11px] font-bold text-brand-muted">
+                            {isAr ? s.etaAr : s.eta}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

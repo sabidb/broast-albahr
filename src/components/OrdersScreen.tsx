@@ -3,15 +3,17 @@ import { money, formatDate } from '../lib/utils';
 import ItemImage from './ItemImage';
 import type { Order } from './Invoice';
 
-const LIVE: Set<string> = new Set(['pending', 'accepted', 'preparing', 'ready', 'new']);
+const LIVE: Set<string> = new Set(['pending', 'accepted', 'preparing', 'cooking', 'almost_ready', 'ready', 'new']);
 
 function statusLabel(s: string | undefined, isAr: boolean) {
   const v = (s || 'pending').toLowerCase();
   const map: Record<string, [string, string, string]> = {
-    pending: ['⏳', 'Pending', 'قيد الانتظار'],
-    new: ['⏳', 'Pending', 'قيد الانتظار'],
-    accepted: ['👍', 'Accepted', 'تم القبول'],
+    pending: ['⏳', 'Waiting for confirmation', 'في انتظار التأكيد'],
+    new: ['⏳', 'Waiting for confirmation', 'في انتظار التأكيد'],
+    accepted: ['👨‍🍳', 'Preparing', 'قيد التحضير'],
     preparing: ['👨‍🍳', 'Preparing', 'قيد التحضير'],
+    cooking: ['🔥', 'Cooking', 'يتم الطبخ'],
+    almost_ready: ['⏰', 'Almost ready', 'على وشك الجهوز'],
     ready: ['🍽️', 'Ready', 'جاهز'],
     completed: ['✅', 'Completed', 'مكتمل'],
     done: ['✅', 'Completed', 'مكتمل'],

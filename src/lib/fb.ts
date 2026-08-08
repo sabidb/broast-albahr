@@ -103,11 +103,12 @@ export const FB = {
     } catch {}
   },
 
-  /** Atomic 6-digit order counter starting at 100000. */
-  async nextOrderNo(): Promise<string> {
+  /** Atomic per-branch order counter starting at 100000. */
+  async nextOrderNo(branchId?: string): Promise<string> {
     if (!db) return String(100000 + Math.floor(Math.random() * 900000));
+    const counterId = branchId ? `orderNo-${branchId}` : 'orderNo';
     try {
-      const ref = doc(db, 'counters', 'orderNo');
+      const ref = doc(db, 'counters', counterId);
       const next = await runTransaction(db, async (tx) => {
         const snap = await tx.get(ref);
         const cur = snap.exists() ? (snap.data().value as number) : 99999;
