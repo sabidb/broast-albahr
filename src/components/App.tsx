@@ -16,7 +16,6 @@ import StreakModal from './StreakModal';
 import BranchSelectStep from './BranchSelectStep';
 import { NotificationsBell, NotificationsSheet } from './NotificationsSheet';
 import AnnouncementBanner from './AnnouncementBanner';
-import TermsFooter from './TermsFooter';
 
 export type Tab = 'menu' | 'rewards' | 'orders' | 'account';
 import { pageVariants } from './motion';
@@ -327,10 +326,7 @@ export default function App() {
       <AnimatePresence mode="wait">
         <motion.div key={tab} variants={pageVariants} initial="initial" animate="animate" exit="exit">
           {tab === 'menu' && (
-            <>
-              <MenuStep menu={menu} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
-              <TermsFooter isAr={isAr} />
-            </>
+            <MenuStep menu={menu} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
           )}
           {tab === 'rewards' && <RewardsScreen loyalty={loyalty} streak={streak} isAr={isAr} onRedeem={onRedeem} />}
           {tab === 'orders' && (
