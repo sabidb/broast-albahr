@@ -179,11 +179,18 @@ export default function OrderTrackingScreen({ order, isAr, onClose, onRate }: Pr
           </div>
           <div className="space-y-1.5">
             {live.items.map((it: any, k: number) => (
-              <div key={k} className="flex items-baseline justify-between text-[13px]">
-                <span className="truncate font-bold text-brand-ink">
-                  {(isAr ? it.nameAr : it.name) || it.name} × {it.qty}
-                </span>
-                <span className="ms-3 shrink-0 font-black text-brand-ink">{money(it.price * (it.qty || 0))}</span>
+              <div key={k} className="text-[13px]">
+                <div className="flex items-baseline justify-between">
+                  <span className="truncate font-bold text-brand-ink">
+                    {(isAr ? it.nameAr : it.name) || it.name} × {it.qty}
+                  </span>
+                  <span className="ms-3 shrink-0 font-black text-brand-ink">{money(it.price * (it.qty || 0))}</span>
+                </div>
+                {it.note && (
+                  <div className="mt-0.5 text-[11px] font-semibold italic text-brand-muted">
+                    📝 {it.note}
+                  </div>
+                )}
               </div>
             ))}
           </div>

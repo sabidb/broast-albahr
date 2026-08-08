@@ -1,7 +1,8 @@
-import { motion } from 'framer-motion';
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { money, formatDate } from '../lib/utils';
 import ItemImage from './ItemImage';
-import type { Order } from './Invoice';
+import Invoice, { type Order } from './Invoice';
 
 const LIVE: Set<string> = new Set(['pending', 'accepted', 'preparing', 'cooking', 'almost_ready', 'ready', 'new']);
 
@@ -35,6 +36,7 @@ export default function OrdersScreen({
   onReorder: () => void;
   onTrack: (o: Order) => void;
 }) {
+  const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   return (
     <div className="mx-auto max-w-[560px] px-4 pb-32 pt-5">
       <h2 className="mb-4 text-2xl font-black text-brand-ink">{isAr ? 'طلباتي 🧾' : 'My Orders 🧾'}</h2>
@@ -101,19 +103,30 @@ export default function OrdersScreen({
                   </div>
                   <span className="text-[16px] font-black text-brand-red">{money(o.totals.total)}</span>
                 </div>
-                {live && (
+                <div className="mt-3 flex gap-2">
+                  {live && (
+                    <button
+                      onClick={() => onTrack(o)}
+                      className="flex-1 rounded-2xl border-2 border-brand-red bg-brand-red/6 py-2.5 text-[13px] font-black text-brand-red transition hover:bg-brand-red hover:text-white"
+                    >
+                      {isAr ? '📍 تتبع الطلب' : '📍 Track order'}
+                    </button>
+                  )}
                   <button
-                    onClick={() => onTrack(o)}
-                    className="mt-3 w-full rounded-2xl border-2 border-brand-red bg-brand-red/6 py-2.5 text-[13px] font-black text-brand-red transition hover:bg-brand-red hover:text-white"
+                    onClick={() => setInvoiceOrder(o)}
+                    className="flex-1 rounded-2xl border-2 border-brand-ink bg-white py-2.5 text-[13px] font-black text-brand-ink transition hover:bg-brand-ink hover:text-white"
                   >
-                    {isAr ? '📍 تتبع الطلب' : '📍 Track order'}
+                    🧾 {isAr ? 'عرض الفاتورة' : 'View Invoice'}
                   </button>
-                )}
+                </div>
               </motion.div>
             );
           })}
         </div>
       )}
+      <AnimatePresence>
+        {invoiceOrder && <Invoice order={invoiceOrder} isAr={isAr} onClose={() => setInvoiceOrder(null)} />}
+      </AnimatePresence>
     </div>
   );
 }

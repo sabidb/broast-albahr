@@ -179,13 +179,20 @@ export default function OrderSuccess({
             </div>
             <div className="space-y-1.5">
               {order.items.map((i) => (
-                <div key={i.id} className="flex items-baseline justify-between text-[13px]">
-                  <span className="truncate font-bold text-brand-ink">
-                    {(isAr ? i.nameAr : i.name) || i.name} × {i.qty}
-                  </span>
-                  <span className="ms-3 shrink-0 font-black text-brand-ink">
-                    {money(i.price * (i.qty || 0))}
-                  </span>
+                <div key={i.id} className="text-[13px]">
+                  <div className="flex items-baseline justify-between">
+                    <span className="truncate font-bold text-brand-ink">
+                      {(isAr ? i.nameAr : i.name) || i.name} × {i.qty}
+                    </span>
+                    <span className="ms-3 shrink-0 font-black text-brand-ink">
+                      {money(i.price * (i.qty || 0))}
+                    </span>
+                  </div>
+                  {i.note && (
+                    <div className="mt-0.5 text-[11px] font-semibold italic text-brand-muted">
+                      📝 {i.note}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

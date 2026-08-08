@@ -30,14 +30,16 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
 
   const addQty = (it: MenuItem, n: number) =>
     setCart((prev) => {
-      const cur = prev[it.id]?.qty || 0;
+      // Items with a custom note get a unique cart key so different notes don't collapse.
+      const key = it.note ? `${it.id}__${it.note}` : String(it.id);
+      const cur = prev[key]?.qty || 0;
       const next = cur + n;
       if (next <= 0) {
         const u = { ...prev };
-        delete u[it.id];
+        delete u[key];
         return u;
       }
-      return { ...prev, [it.id]: { ...it, qty: next } };
+      return { ...prev, [key]: { ...it, qty: next } };
     });
 
   const featured = useMemo(() => Object.values(menu).flat().filter((i) => i.available).slice(0, 8), [menu]);

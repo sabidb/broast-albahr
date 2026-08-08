@@ -26,7 +26,8 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
     const rows = order.items
       .map(
         (i) =>
-          `<div class="row"><span>${i.emoji} ${i.name} ×${i.qty}</span><span>${money(i.price * (i.qty || 0))}</span></div>`,
+          `<div class="row"><span>${i.emoji} ${i.name} ×${i.qty}</span><span>${money(i.price * (i.qty || 0))}</span></div>` +
+          (i.note ? `<div style="font-size:11px;color:#666;padding-left:12px;font-style:italic">📝 ${i.note}</div>` : ''),
       )
       .join('');
     w.document.write(`<html><head><title>Invoice ${order.orderNo}</title><style>
@@ -98,11 +99,18 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
           ))}
           <div className="my-3 border-t border-dashed border-gray-200 pt-3">
             {order.items.map((i, idx) => (
-              <div key={idx} className="mb-1.5 flex justify-between text-[13px]">
-                <span>
-                  {i.emoji} {i.name} <span className="text-gray-400">×{i.qty}</span>
-                </span>
-                <span className="font-bold">{money(i.price * (i.qty || 0))}</span>
+              <div key={idx} className="mb-1.5 text-[13px]">
+                <div className="flex justify-between">
+                  <span>
+                    {i.emoji} {i.name} <span className="text-gray-400">×{i.qty}</span>
+                  </span>
+                  <span className="font-bold">{money(i.price * (i.qty || 0))}</span>
+                </div>
+                {i.note && (
+                  <div className="mt-0.5 pl-4 text-[11px] italic text-gray-500">
+                    📝 {i.note}
+                  </div>
+                )}
               </div>
             ))}
           </div>

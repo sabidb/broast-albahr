@@ -11,6 +11,8 @@ export interface MenuItem {
   qty?: number;
   /** Uploaded product photo URL (Firebase Storage or any URL, e.g. GitHub raw). */
   img?: string;
+  /** Optional per-item note from the customer (e.g. "no onions"). Displays everywhere. */
+  note?: string;
 }
 export type Menu = Record<string, MenuItem[]>;
 export interface Branch {

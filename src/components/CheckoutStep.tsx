@@ -333,14 +333,21 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
           <div className="card-surface p-5">
             <span className={label}>{isAr ? 'ملخص الطلب' : 'ORDER SUMMARY'}</span>
             {items.map((i) => (
-              <div key={i.id} className="mb-2 flex items-center justify-between text-[13px] font-bold">
-                <span className="flex items-center gap-1.5 text-brand-ink2">
-                  <span className="inline-block h-6 w-6 shrink-0 overflow-hidden rounded-md">
-                    <ItemImage item={i} iconSize={14} />
+              <div key={i.id} className="mb-2 text-[13px] font-bold">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-brand-ink2">
+                    <span className="inline-block h-6 w-6 shrink-0 overflow-hidden rounded-md">
+                      <ItemImage item={i} iconSize={14} />
+                    </span>
+                    {isAr ? i.nameAr : i.name} ×{i.qty}
                   </span>
-                  {isAr ? i.nameAr : i.name} ×{i.qty}
-                </span>
-                <span className="font-black text-brand-red">{money(i.price * (i.qty || 0))}</span>
+                  <span className="font-black text-brand-red">{money(i.price * (i.qty || 0))}</span>
+                </div>
+                {i.note && (
+                  <div className="ms-8 mt-0.5 text-[11px] font-semibold italic text-brand-muted">
+                    📝 {i.note}
+                  </div>
+                )}
               </div>
             ))}
             <div className="mt-3 border-t border-brand-line pt-3">

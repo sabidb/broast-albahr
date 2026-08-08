@@ -54,6 +54,7 @@ export default function ItemDetail({
 
   const [selected, setSelected] = useState<number | null>(variants.length ? 0 : null);
   const [qty, setQty] = useState(1);
+  const [note, setNote] = useState('');
 
   // Hide the App-level "View Cart" FAB while this sheet is open so it
   // never overlaps the Add-to-Cart bar.
@@ -87,6 +88,8 @@ export default function ItemDetail({
         price: v.price,
       };
     }
+    const trimmedNote = note.trim();
+    if (trimmedNote) built = { ...built, note: trimmedNote };
     onAdd(built, qty);
     onClose();
   };
@@ -158,6 +161,20 @@ export default function ItemDetail({
               <div className="text-[11px] font-bold text-brand-muted">{isAr ? 'القطع' : 'Pieces'}</div>
               <div className="text-[16px] font-black text-brand-red">{pieces ?? (isAr ? '—' : '1 serving')}</div>
             </div>
+          </div>
+
+          <div className="mt-5">
+            <div className="mb-2 text-[13px] font-black uppercase tracking-wide text-brand-muted">
+              {isAr ? 'ملاحظات خاصة (اختياري)' : 'Special notes (optional)'}
+            </div>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={isAr ? 'مثال: بدون بصل، صلصة إضافية...' : 'e.g. no onions, extra sauce...'}
+              rows={2}
+              maxLength={140}
+              className="w-full resize-none rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-[13px] font-bold text-brand-ink outline-none focus:border-brand-red"
+            />
           </div>
 
           {variants.length > 0 && (
