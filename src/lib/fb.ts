@@ -14,6 +14,7 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
   doc,
   getDoc,
   setDoc,
@@ -60,7 +61,19 @@ let storage: FirebaseStorage | null = null;
 let auth: Auth | null = null;
 try {
   app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
+  // ignoreUndefinedProperties: schema.ts validators (validateOrder etc)
+  // build objects like { nameAr: undefined } when optional fields are
+  // absent. Without this flag Firestore's SDK throws synchronously on
+  // setDoc — the entire write silently failed, the customer saw the
+  // success screen, admin never got the order. See the "order 100007"
+  // debug session for the full story.
+  try {
+    db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    // A prior module already initialized it — fall back to the singleton,
+    // which will already have (or lack) the flag from whoever won the race.
+    db = getFirestore(app);
+  }
   storage = getStorage(app);
   auth = getAuth(app);
   // App Check runs in the browser only; skip during SSR / tests.

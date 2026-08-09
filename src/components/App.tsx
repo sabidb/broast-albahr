@@ -201,7 +201,10 @@ function AppInner() {
 
   const showToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3200);
+    // Error toasts (start with the ⚠️ warning glyph) stick around for 12s so
+    // the customer actually sees them; celebratory ones dismiss after 3.2s.
+    const isError = /^\s*⚠️/.test(msg);
+    setTimeout(() => setToast(null), isError ? 12000 : 3200);
   };
 
   // Post-OTP callback — Firebase Auth has persisted the session; onAuth will refresh `user`,
