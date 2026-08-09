@@ -4,7 +4,15 @@ export interface MenuItem {
   id: number | string;
   name: string;
   nameAr: string;
+  /** App selling price (what the customer pays in the app). */
   price: number;
+  /**
+   * Phase 6 — standard restaurant menu price (what the counter would charge).
+   * Absent for legacy items → defaults to `price` at read time. When set
+   * higher than `price`, the delta is the app-exclusive saving that shows
+   * on reports and the invoice.
+   */
+  menuPrice?: number;
   emoji: string;
   cal: string;
   available: boolean;

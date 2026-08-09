@@ -1,6 +1,8 @@
 import { VAT_RATE, type MenuItem, type Branch } from './data';
+import { priceOrder, toMinor } from './pricing';
+void VAT_RATE; // re-exported below — silence the unused-import warning
 
-export const APP_VERSION = '4.4.0';
+export const APP_VERSION = '4.5.0';
 
 /** Haversine distance in km between two lat/lng points. Used by BranchSelectStep to sort branches by proximity. */
 export function calcDistance(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -43,18 +45,59 @@ export interface OrderTotals {
   vat: number;
   total: number;
   vatInclusive?: boolean;
+  /** Phase 6 additions — surfaced so the checkout preview can show the same */
+  /** menu-value vs app-value split the server persists. */
+  menuValue?: number;
+  appValue?: number;
+  appDiscount?: number;
+  reward?: number;
+  base?: number;
+  net?: number;
   /** Deprecated — pickup-only app; kept so historical orders still deserialize. */
   dFee?: number;
 }
 
+/**
+ * Compute display totals for the checkout preview. Delegates to the shared
+ * pricing engine so client and server render identical numbers. `discount`
+ * is the accepted coupon value in SAR.
+ */
 export function computeTotals(items: MenuItem[], discount: number): OrderTotals {
-  const subtotal = items.reduce((s, i) => s + i.price * (i.qty || 0), 0);
-  const pFee = platformFee(subtotal);
-  const base = Math.max(0, subtotal + pFee - discount);
-  const vat = Math.round((base * VAT_RATE) / (1 + VAT_RATE) * 100) / 100;
-  const total = Math.round(base * 100) / 100;
-  return { subtotal, pFee, discount, vat, total, vatInclusive: true };
+  const money = priceOrder(
+    items
+      .filter((i) => (i.qty || 0) > 0)
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        nameAr: i.nameAr,
+        emoji: i.emoji,
+        note: i.note,
+        appPrice: i.price,
+        menuPrice: Number.isFinite(Number(i.menuPrice)) && Number(i.menuPrice) > 0 ? Number(i.menuPrice) : i.price,
+        qty: i.qty || 0,
+      })),
+    toMinor(discount),
+  );
+  const t = money.totals;
+  return {
+    subtotal: t.subtotal,
+    pFee: t.pFee,
+    discount: t.discount,
+    vat: t.vat,
+    total: t.total,
+    vatInclusive: true,
+    menuValue: t.menuValue,
+    appValue: t.appValue,
+    appDiscount: t.appDiscount,
+    reward: t.reward,
+    base: t.base,
+    net: t.net,
+  };
 }
+
+// Re-export VAT_RATE so downstream consumers importing from utils don't need
+// to reach into data.ts directly. Keeps this file the single money entry-point.
+export { VAT_RATE };
 
 export interface OrderPayload {
   branch: string;

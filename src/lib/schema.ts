@@ -117,10 +117,22 @@ export interface OrderItem {
   id: string | number;
   name: string;
   nameAr?: string;
+  /** App selling price (== price at order time). Kept as the canonical display field. */
   price: number;
   qty: number;
   note?: string;
   emoji?: string;
+  // ── Phase 6 line snapshot (populated by submitOrder@v2). All optional so a
+  // pre-Phase-6 order still deserializes; new orders always carry them.
+  menuPrice?: number;
+  appPrice?: number;
+  lineSubtotal?: number;
+  lineMenuValue?: number;
+  lineDiscount?: number;
+  lineReward?: number;
+  lineTax?: number;
+  lineTotal?: number;
+  lineNet?: number;
 }
 export interface OrderTotals {
   subtotal: number;
@@ -128,6 +140,14 @@ export interface OrderTotals {
   vat: number;
   discount?: number;
   total: number;
+  // ── Phase 6 totals extensions ────────────────────────────────────────
+  menuValue?: number;
+  appValue?: number;
+  appDiscount?: number;
+  reward?: number;
+  base?: number;
+  net?: number;
+  vatInclusive?: boolean;
 }
 export interface OrderDoc {
   orderNo: string;

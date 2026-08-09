@@ -31,6 +31,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { priceOrder, toMinor, type LineIn } from './pricing.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -128,25 +129,13 @@ export const whoami = onCall(async (req) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Phase 5 — Hardened ordering
+// Phase 5 — Hardened ordering (Phase 6 upgrades the money math)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const VAT_RATE = 0.15;
 const SA_PHONE = /^05\d{8}$/;
 const PICKUP_SLOTS_ALLOWED = new Set(['ASAP', '15 min', '30 min', '45 min', '1 hour']);
 const PAYMENT_METHODS_ALLOWED = new Set(['cash', 'card', 'prepaid']);
 const ORDER_TYPES_ALLOWED = new Set(['pickup', 'delivery']);
-
-/** Round to two decimal places in a way that stays stable across sums. */
-function money(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-/** Tiered platform fee — mirrors src/lib/utils.ts platformFee. */
-function platformFee(subtotal: number): number {
-  const rate = subtotal >= 250 ? 0.04 : subtotal >= 100 ? 0.03 : 0.02;
-  return money(subtotal * rate);
-}
 
 /** Atomic per-branch order counter — increments by exactly 1. */
 async function mintOrderNo(branchId: string): Promise<string> {
@@ -183,7 +172,8 @@ interface FlatMenuItem {
   id: string | number;
   name?: string;
   nameAr?: string;
-  price?: number;
+  price?: number;      // app selling price (SAR)
+  menuPrice?: number;  // Phase 6 — standard restaurant menu price (SAR). Defaults to price when absent.
   emoji?: string;
   available?: boolean;
   branches?: string[];
@@ -286,8 +276,10 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
     }
   }
 
-  const snapshotItems: any[] = [];
-  let subtotal = 0;
+  // Build the LineIn[] the pricing engine wants. Every field is validated up
+  // front so a bad payload never reaches priceOrder — errors surface here as
+  // typed HttpsErrors with the offending field.
+  const lines: LineIn[] = [];
   for (let i = 0; i < data.items.length; i++) {
     const raw = data.items[i];
     const key = String(raw?.id ?? '');
@@ -309,29 +301,42 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
     if (!Number.isInteger(qty) || qty < 1 || qty > 999) {
       throw new HttpsError('invalid-argument', `Bad quantity for item ${key}.`);
     }
-    const price = Number(it.price);
-    if (!Number.isFinite(price) || price < 0) {
+    const appPrice = Number(it.price);
+    if (!Number.isFinite(appPrice) || appPrice < 0) {
       throw new HttpsError('failed-precondition', `Item ${key} has no valid price.`);
     }
-    subtotal = money(subtotal + price * qty);
-    const snap: any = {
+    // menuPrice defaults to appPrice when the admin has not entered a
+    // separate counter price. A menuPrice smaller than the app price is
+    // clamped up — a "discount from menu" that is negative would be a
+    // reporting lie.
+    const menuPriceRaw = Number(it.menuPrice);
+    const menuPrice = Number.isFinite(menuPriceRaw) && menuPriceRaw > 0
+      ? Math.max(menuPriceRaw, appPrice)
+      : appPrice;
+    const line: LineIn = {
       id: typeof it.id === 'number' ? it.id : String(it.id),
       name: String(it.name || ''),
-      price,
+      menuPrice,
+      appPrice,
       qty,
     };
-    if (it.nameAr) snap.nameAr = String(it.nameAr);
-    if (it.emoji) snap.emoji = String(it.emoji);
-    if (raw?.note) snap.note = String(raw.note).slice(0, 500);
-    snapshotItems.push(snap);
+    if (it.nameAr) line.nameAr = String(it.nameAr);
+    if (it.emoji) line.emoji = String(it.emoji);
+    if (raw?.note) line.note = String(raw.note).slice(0, 500);
+    lines.push(line);
   }
 
   // Coupon lookup — supports both the legacy `coupons/{code}` docs and the
   // admin's `settings/coupons` items array. Phase 10 replaces this with the
   // full reward engine; keep the shape here so old codes keep working.
-  let discount = 0;
+  //
+  // Discount is computed against the app subtotal (in halalas, via
+  // priceOrder). We resolve the coupon type + value here and hand the
+  // discount to the pricing engine as an integer minor-unit value.
   let appliedCoupon: string | undefined;
   const rawCode = String(data.couponCode || '').trim().toUpperCase();
+  const appSubtotalMinor = lines.reduce((s, l) => s + toMinor(l.appPrice) * l.qty, 0);
+  let discountMinor = 0;
   if (rawCode) {
     let value = 0;
     let type: 'percent' | 'fixed' | null = null;
@@ -355,17 +360,17 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
       }
     }
     if (type && Number.isFinite(value) && value > 0) {
-      discount = type === 'percent'
-        ? money((subtotal * value) / 100)
-        : money(Math.min(value, subtotal));
-      appliedCoupon = rawCode;
+      discountMinor = type === 'percent'
+        ? Math.round((appSubtotalMinor * value) / 100)
+        : Math.min(toMinor(value), appSubtotalMinor);
+      if (discountMinor > 0) appliedCoupon = rawCode;
     }
   }
 
-  const pFee = platformFee(subtotal);
-  const base = Math.max(0, money(subtotal + pFee - discount));
-  const vat = money((base * VAT_RATE) / (1 + VAT_RATE));
-  const total = base;
+  const money = priceOrder(lines, discountMinor);
+  const snapshotItems = money.items;
+  const totals = money.totals;
+  const total = totals.total;
 
   const orderNo = await mintOrderNo(branchId);
   const nowIso = new Date().toISOString();
@@ -378,7 +383,7 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
     branch: branchId,
     branchObj: branchData,
     items: snapshotItems,
-    totals: { subtotal, pFee, discount, vat, total },
+    totals,
     total,
     paymentMethod,
     orderType,
@@ -387,7 +392,7 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
     clientOrderId,
     createdAt: FieldValue.serverTimestamp(),
     date: nowIso,
-    submittedVia: 'submitOrder@v1',
+    submittedVia: 'submitOrder@v2', // v2 = Phase 6 pricing engine + per-line snapshots
   };
   if (data.pickupTime && PICKUP_SLOTS_ALLOWED.has(data.pickupTime)) {
     payload.pickupTime = data.pickupTime;
@@ -541,7 +546,8 @@ export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<R
   }
 
   const nowIso = new Date().toISOString();
-  const refundedAmount = amount != null ? money(amount) : money(Number(cur.total) || 0);
+  const roundSar = (n: number) => Math.round(n * 100) / 100;
+  const refundedAmount = amount != null ? roundSar(amount) : roundSar(Number(cur.total) || 0);
   const historyEntry: Record<string, unknown> = {
     status: 'refunded',
     at: nowIso,

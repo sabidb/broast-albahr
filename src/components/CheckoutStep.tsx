@@ -252,7 +252,11 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
             ))}
             <div className="mt-3 border-t border-brand-line pt-3">
               {[
+                ...(totals.menuValue && totals.menuValue > totals.subtotal
+                  ? [[isAr ? 'قيمة القائمة' : 'Menu value', money(totals.menuValue)]] : []),
                 [isAr ? 'المجموع الفرعي' : 'Subtotal', money(totals.subtotal)],
+                ...(totals.appDiscount && totals.appDiscount > 0
+                  ? [[isAr ? 'خصم التطبيق' : 'App savings', '- ' + money(totals.appDiscount)]] : []),
                 [isAr ? 'رسوم المنصة' : 'Platform Fee', money(totals.pFee)],
                 ...(discount ? [[isAr ? 'الخصم' : 'Discount', '- ' + money(discount)]] : []),
               ].map(([l, v], i) => (
