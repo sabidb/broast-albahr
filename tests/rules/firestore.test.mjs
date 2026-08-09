@@ -36,7 +36,7 @@ before(async () => {
     await setDoc(doc(db, 'orders/o1'), { userPhone: '0501234567', branch: 'kakkiyah', total: 40 });
     await setDoc(doc(db, 'orders/o2'), { userPhone: '0509999999', branch: 'subhani', total: 50 });
     await setDoc(doc(db, 'settings/menu'), { menu: {} });
-    await setDoc(doc(db, 'branches/kakkiyah'), { nameEn: 'Kakkiyah' });
+    await setDoc(doc(db, 'branches/kakkiyah'), { nameEn: 'Kakkiyah', nameAr: 'الكاكية' });
     await setDoc(doc(db, 'coupons/HELLO'), { discount: 10, type: 'percent', active: true });
   });
 });
