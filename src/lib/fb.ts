@@ -232,15 +232,13 @@ export const FB = {
       statusHistory: [{ status: 'new', at: new Date().toISOString() }],
     };
     try {
-      // Use the clientOrderId as the Firestore doc id so a retried tap is a
-      // no-op on the server (same key, doc already exists). Avoids an
-      // unfiltered LIST query which the rules deny for customers.
+      // Use the clientOrderId as the Firestore doc id. setDoc against a
+      // fixed id is inherently idempotent — a retry writes to the same
+      // path with the same payload. No preflight getDoc (a getDoc on a
+      // nonexistent doc can trip strict read rules that inspect
+      // resource.data, and we don't need one anyway).
       if (clientOrderId) {
         const ref = doc(db, 'orders', clientOrderId);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          return { fbId: ref.id, orderNo: (snap.data().orderNo as string) || orderNo };
-        }
         await setDoc(ref, payload);
         return { fbId: ref.id, orderNo };
       }
