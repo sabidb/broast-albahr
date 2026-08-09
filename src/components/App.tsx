@@ -81,6 +81,19 @@ function AppInner() {
       const ph = (doc?.phone as string) || '';
       if (nm && ph) setUser({ uid: au.uid, name: nm, phone: ph });
       else setUser(null); // profile not yet filled — force VerifyStep
+      // Hydrate loyalty from the server (customers/{uid}.loyaltyPoints holds
+      // the lifetime total, incremented on every order). Restrictive browsers
+      // nuke localStorage on refresh, so local state defaults to zero; the
+      // server number is the durable one — surface it.
+      const serverPts = Number((doc as any)?.loyaltyPoints) || 0;
+      if (serverPts > 0) {
+        setLoyalty((prev) => {
+          if (serverPts <= prev.lifetime) return prev;
+          const next = { points: serverPts, lifetime: serverPts, history: prev.history, redeemed: prev.redeemed };
+          try { localStorage.setItem('ba_loyalty_v1', JSON.stringify(next)); } catch {}
+          return next;
+        });
+      }
     });
     return () => unsub();
   }, []);
