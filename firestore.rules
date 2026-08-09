@@ -18,9 +18,9 @@ service cloud.firestore {
 
     function customerPhone() {
       // Firebase phone auth stores E.164 like "+9665XXXXXXXX"; app stores keys
-      // in the legacy "05XXXXXXXX" form. Normalise for comparison.
+      // in the legacy "05XXXXXXXX" form. Normalise via string slicing.
       return signedIn() && request.auth.token.phone_number != null
-        ? '0' + request.auth.token.phone_number.substring(4)
+        ? '0' + request.auth.token.phone_number[4:]
         : '';
     }
 

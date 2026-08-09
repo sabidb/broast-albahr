@@ -17,13 +17,6 @@
       ]
     },
     {
-      "collectionGroup": "orders",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "clientOrderId", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "items",
       "queryScope": "COLLECTION",
       "fields": [
