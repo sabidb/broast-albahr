@@ -1,9 +1,9 @@
 rules_version = '2';
 
 // Broast Al Bahr — Firestore rules.
-// The app has no Firebase Auth (admin is app-password gated), so the menu,
-// restaurant settings, orders and customers collections are open to the client.
-// Tighten these if you later add Firebase Authentication for admins.
+// The app has no Firebase Auth (admin is app-password gated), so menu,
+// restaurant settings, orders, customers, counters and notifications are
+// open to the client. Tighten these if you later add Firebase Authentication.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,13 +12,24 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Orders placed by customers.
+    // Orders placed by customers. Customer app also reads them back for history.
     match /orders/{orderId} {
       allow read, write: if true;
     }
 
     // Customer loyalty profiles.
     match /customers/{phone} {
+      allow read, write: if true;
+    }
+
+    // Per-branch atomic order-number counters (orderNo-{branchId}).
+    // MUST be readable/writable or the transaction falls back to random numbers.
+    match /counters/{counterId} {
+      allow read, write: if true;
+    }
+
+    // Customer inbox notifications (subcollection under phone).
+    match /notifications/{phone}/items/{itemId} {
       allow read, write: if true;
     }
 

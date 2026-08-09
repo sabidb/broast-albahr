@@ -103,23 +103,41 @@ export const FB = {
     } catch {}
   },
 
-  /** Atomic per-branch order counter starting at 100000. */
+  /** Atomic per-branch order counter starting at 100000. Increments by exactly 1. */
   async nextOrderNo(branchId?: string): Promise<string> {
-    if (!db) return String(100000 + Math.floor(Math.random() * 900000));
     const counterId = branchId ? `orderNo-${branchId}` : 'orderNo';
-    try {
-      const ref = doc(db, 'counters', counterId);
-      const next = await runTransaction(db, async (tx) => {
-        const snap = await tx.get(ref);
-        const cur = snap.exists() ? (snap.data().value as number) : 99999;
-        const nxt = cur + 1;
-        tx.set(ref, { value: nxt, updatedAt: serverTimestamp() }, { merge: true });
-        return nxt;
-      });
-      return String(next).padStart(6, '0');
-    } catch {
-      return String(100000 + (Date.now() % 900000)).padStart(6, '0');
+    const lsKey = `ba_orderNo_${counterId}`;
+    // localStorage keeps the sequence continuous on this device even if the
+    // Firestore transaction is briefly denied — never falls back to random.
+    const readLocal = () => {
+      try {
+        const v = Number(localStorage.getItem(lsKey) || '99999');
+        return Number.isFinite(v) && v >= 99999 ? v : 99999;
+      } catch { return 99999; }
+    };
+    const writeLocal = (n: number) => { try { localStorage.setItem(lsKey, String(n)); } catch {} };
+
+    if (db) {
+      try {
+        const ref = doc(db, 'counters', counterId);
+        const next = await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref);
+          const local = readLocal();
+          const remote = snap.exists() ? (snap.data().value as number) : 99999;
+          const cur = Math.max(local, remote);
+          const nxt = cur + 1;
+          tx.set(ref, { value: nxt, updatedAt: serverTimestamp() }, { merge: true });
+          return nxt;
+        });
+        writeLocal(next);
+        return String(next).padStart(6, '0');
+      } catch {
+        // Firestore denied or offline — bump the local sequence instead.
+      }
     }
+    const nxt = readLocal() + 1;
+    writeLocal(nxt);
+    return String(nxt).padStart(6, '0');
   },
 
   /** Save a new order. Returns { fbId, orderNo }. Status starts as 'pending'. */
@@ -131,7 +149,7 @@ export const FB = {
         ...o,
         orderNo,
         createdAt: serverTimestamp(),
-        status: 'pending',
+        status: 'new',
       });
       return { fbId: ref.id, orderNo };
     } catch {
