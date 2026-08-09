@@ -211,50 +211,54 @@ function AppInner() {
   // but we set it optimistically so the UI advances without a round-trip.
   const onVerified = (u: User) => setUser(u);
 
+  // Guards against a re-entrant tap on Place Order (fast double-tap, an
+  // accidental re-render, or an event that fires twice). Two invocations
+  // used to consume two counter ticks and race the writes; now the second
+  // one no-ops until the first settles.
+  const placingRef = useRef(false);
   const onOrderPlaced = async (payload: any) => {
-    // Reserve atomic per-branch 6-digit order-no first so the popup + Firestore match.
-    const orderNo = await FB.nextOrderNo(payload.branch);
-    const order: Order = {
-      ...payload,
-      orderNo,
-      date: new Date().toISOString(),
-      status: 'new',
-    };
-    setOrders((prev) => [order, ...prev]);
-    setLastOrder(order);
+    if (placingRef.current) return;
+    placingRef.current = true;
     setCheckoutOpen(false);
-    const saved = await FB.saveOrder({
-      ...payload,
-      userUid: user!.uid,
-      userName: payload.user.name,
-      userPhone: payload.user.phone,
-      total: order.totals.total,
-      orderNo,
-      date: order.date,
-      clientOrderId: payload.clientOrderId,
-    });
-    if (saved.fbId) {
-      // patch the local copies with the Firestore id so we can subscribe/track live.
-      setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, fbId: saved.fbId } : o)));
-      setLastOrder((cur) => (cur && cur.orderNo === orderNo ? { ...cur, fbId: saved.fbId } : cur));
-    } else if (saved.error) {
-      // Surface the real Firestore/schema error so a silent regression
-      // like "rules deployed, orders no longer land" is visible to the user
-      // (and the person debugging over their shoulder) without DevTools.
-      showToast(isAr ? `⚠️ لم يُحفظ الطلب: ${saved.error}` : `⚠️ Order not saved: ${saved.error}`);
-    }
-    // earn loyalty points
-    const earned = pointsForOrder(order.totals.total, loyalty.lifetime);
-    setLoyalty(addPoints(earned, `Order #${orderNo}`));
-    if (user?.uid)
-      FB.saveCustomer({
-        uid: user.uid,
-        name: user.name,
-        phone: user.phone,
-        loyaltyPoints: earned,
-        lastAddress: payload.address || '',
+    try {
+      // saveOrder is the single minter of orderNo now — waiting on it also
+      // guarantees the confetti screen shows the number that persisted.
+      const saved = await FB.saveOrder({
+        ...payload,
+        userUid: user!.uid,
+        userName: payload.user.name,
+        userPhone: payload.user.phone,
+        total: payload.totals.total,
+        date: new Date().toISOString(),
+        clientOrderId: payload.clientOrderId,
       });
-    showToast(isAr ? `+${earned} نقطة 🎁` : `+${earned} points 🎁`);
+      const orderNo = saved.orderNo;
+      const order: Order = {
+        ...payload,
+        orderNo,
+        date: new Date().toISOString(),
+        status: 'new',
+        fbId: saved.fbId || undefined,
+      };
+      setOrders((prev) => [order, ...prev]);
+      setLastOrder(order);
+      if (!saved.fbId && saved.error) {
+        showToast(isAr ? `⚠️ لم يُحفظ الطلب: ${saved.error}` : `⚠️ Order not saved: ${saved.error}`);
+      }
+      const earned = pointsForOrder(order.totals.total, loyalty.lifetime);
+      setLoyalty(addPoints(earned, `Order #${orderNo}`));
+      if (user?.uid)
+        FB.saveCustomer({
+          uid: user.uid,
+          name: user.name,
+          phone: user.phone,
+          loyaltyPoints: earned,
+          lastAddress: payload.address || '',
+        });
+      showToast(isAr ? `+${earned} نقطة 🎁` : `+${earned} points 🎁`);
+    } finally {
+      placingRef.current = false;
+    }
   };
 
   const [trackOrder, setTrackOrder] = useState<Order | null>(null);

@@ -236,7 +236,14 @@ export const FB = {
    * a retry with the same key returns the original doc instead of double-writing.
    */
   async saveOrder(o: Record<string, unknown>): Promise<{ fbId: string | null; orderNo: string; error?: string }> {
-    const orderNo = (o.orderNo as string) || (await FB.nextOrderNo());
+    // Single source of truth for the order number: mint it here, using the
+    // caller's branch so the per-branch counter (orderNo-<branchId>) ticks
+    // instead of the global one. Pre-generating in the UI and passing it
+    // through was the shape that let a re-entrant click consume two counter
+    // values and race two setDoc writes against the same clientOrderId —
+    // whichever finished last won in Firestore, so the app could show 100011
+    // while the persisted doc kept 100010.
+    const orderNo = (o.orderNo as string) || (await FB.nextOrderNo(o.branch as string | undefined));
     if (!db) return { fbId: null, orderNo, error: 'no-db' };
     const clientOrderId = o.clientOrderId as string | undefined;
     // Validate BEFORE stamping createdAt so a rejected payload never mints
