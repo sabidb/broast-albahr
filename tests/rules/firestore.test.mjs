@@ -50,28 +50,41 @@ const asBranch2 = () => env.authenticatedContext('branch2-uid').firestore();
 const asAnon = () => env.unauthenticatedContext().firestore();
 
 describe('unauthenticated', () => {
-  it('cannot read menu', () => assertFails(getDoc(doc(asAnon(), 'settings/menu'))));
-  it('cannot read any customer', () => assertFails(getDoc(doc(asAnon(), 'customers/0501234567'))));
+  // Menu, branches, settings, coupons are intentionally public read (a first-time
+  // visitor renders the menu before signing in). See Phase 2 pivot commit b70a3bc.
+  it('can read menu (public)', () => assertSucceeds(getDoc(doc(asAnon(), 'settings/menu'))));
+  it('cannot read any customer', () => assertFails(getDoc(doc(asAnon(), 'customers/customer-uid-1'))));
   it('cannot read any order', () => assertFails(getDoc(doc(asAnon(), 'orders/o1'))));
   it('cannot write to a counter', () => assertFails(setDoc(doc(asAnon(), 'counters/x'), { value: 1 })));
 });
 
 describe('customer', () => {
-  it('can read their own customer doc', () =>
+  it('can write their own customer doc', () =>
     assertSucceeds(setDoc(doc(asCustomer('0501234567'), 'customers/0501234567'), { name: 'A', phone: '0501234567' })));
   it('cannot read someone else\'s customer doc', () =>
     assertFails(getDoc(doc(asCustomer('0501234567'), 'customers/0509999999'))));
-  it('can read their own order', () =>
+  // o1 in the fixture has userPhone '0501234567' but no userUid — phone-scope
+  // clause in the read rule is what makes this succeed, mirroring cross-device
+  // history for pre-Phase-2 orders and anon-uid churn.
+  it('can read their own order via phone match', () =>
     assertSucceeds(getDoc(doc(asCustomer('0501234567'), 'orders/o1'))));
   it('cannot read another customer\'s order', () =>
     assertFails(getDoc(doc(asCustomer('0501234567'), 'orders/o2'))));
-  it('can create an order that carries their own userPhone', () =>
+  it('can create an order that carries their own userUid', () =>
     assertSucceeds(addDoc(collection(asCustomer('0501234567'), 'orders'), {
-      userPhone: '0501234567', branch: 'kakkiyah', total: 22,
+      userUid: '0501234567', userPhone: '0501234567', branch: 'kakkiyah', total: 22,
     })));
-  it('cannot create an order that spoofs another userPhone', () =>
+  it('cannot create an order that spoofs another uid', () =>
     assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), {
-      userPhone: '0509999999', branch: 'kakkiyah', total: 1,
+      userUid: 'someone-else-uid', userPhone: '0501234567', branch: 'kakkiyah', total: 1,
+    })));
+  it('cannot create an order missing userUid', () =>
+    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), {
+      userPhone: '0501234567', branch: 'kakkiyah', total: 1,
+    })));
+  it('cannot create an order missing branch', () =>
+    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), {
+      userUid: '0501234567', userPhone: '0501234567', total: 1,
     })));
   it('cannot write to settings/menu', () =>
     assertFails(setDoc(doc(asCustomer('0501234567'), 'settings/menu'), { menu: {} })));
