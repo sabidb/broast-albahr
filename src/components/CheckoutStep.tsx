@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BRANCHES, VALID_COUPONS, PAYMENT_METHODS, PICKUP_SLOTS, type MenuItem } from '../lib/data';
-import { calcDistance, getDeliveryFee, computeTotals, money } from '../lib/utils';
+import { VALID_COUPONS, PAYMENT_METHODS, PICKUP_SLOTS, type Branch, type MenuItem } from '../lib/data';
+import { computeTotals, money } from '../lib/utils';
 import ItemImage from './ItemImage';
 import type { Cart } from './MenuStep';
 
@@ -12,24 +12,24 @@ interface Props {
   onOrderPlaced: (o: any) => void;
   isAr: boolean;
   defaultBranchId?: string | null;
+  branches: Branch[];
 }
 
-type LocStatus = 'idle' | 'loading' | 'found' | 'unavailable' | 'error';
-
-export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, defaultBranchId }: Props) {
+export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, defaultBranchId, branches }: Props) {
   const items = Object.values(cart) as MenuItem[];
   const [branch, setBranch] = useState(defaultBranchId || '');
-  const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('pickup');
   const [pay, setPay] = useState('cash');
   const [note, setNote] = useState('');
   const [pickupTime, setPickupTime] = useState('ASAP');
   const [coupon, setCoupon] = useState('');
   const [applied, setApplied] = useState<{ code: string; c: (typeof VALID_COUPONS)[string] } | null>(null);
   const [couponMsg, setCouponMsg] = useState('');
-  const [locStatus, setLocStatus] = useState<LocStatus>('idle');
-  const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
-  const [distance, setDistance] = useState<number | null>(null);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  // Stable per-submission id so a retried tap doesn't create a duplicate order.
+  const clientOrderIdRef = useRef<string>(
+    (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36),
+  );
 
   const subtotal = items.reduce((s, i) => s + i.price * (i.qty || 0), 0);
   const discount = applied
@@ -37,44 +37,7 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
       ? Math.round((subtotal * applied.c.discount) / 100)
       : Math.min(applied.c.discount, subtotal)
     : 0;
-  const totals = useMemo(
-    () => computeTotals(items, orderType, deliveryFee, discount),
-    [cart, orderType, deliveryFee, discount],
-  );
-
-  const requestLoc = () => {
-    if (!navigator.geolocation) return setLocStatus('error');
-    setLocStatus('loading');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords;
-        setCoords({ lat, lng });
-        const br = BRANCHES.find((b) => b.id === branch) || BRANCHES[0];
-        const km = calcDistance(lat, lng, br.lat, br.lng);
-        setDistance(Math.round(km * 10) / 10);
-        const fee = getDeliveryFee(km);
-        if (fee === -1) {
-          setLocStatus('unavailable');
-          setDeliveryFee(null);
-        } else {
-          setLocStatus('found');
-          setDeliveryFee(fee);
-        }
-      },
-      () => setLocStatus('error'),
-    );
-  };
-
-  useEffect(() => {
-    if (orderType === 'delivery' && branch) requestLoc();
-    else {
-      setLocStatus('idle');
-      setDeliveryFee(null);
-      setDistance(null);
-      setCoords(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderType, branch]);
+  const totals = useMemo(() => computeTotals(items, discount), [cart, discount]);
 
   const applyCoupon = () => {
     const code = coupon.trim().toUpperCase();
@@ -89,23 +52,19 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
 
   const placeOrder = () => {
     if (!branch) return alert(isAr ? 'اختر الفرع' : 'Please select a branch');
-    if (orderType === 'delivery' && locStatus !== 'found')
-      return alert(isAr ? 'شارك موقعك أولاً' : 'Share your location first');
-    const branchObj = BRANCHES.find((b) => b.id === branch) || BRANCHES[0];
-    const locationLink = coords ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}` : '';
+    const branchObj = branches.find((b) => b.id === branch) || branches[0];
     const payload = {
       branch,
       branchObj,
-      orderType,
       items,
       totals,
-      pickupTime: orderType === 'pickup' ? pickupTime : '',
+      pickupTime,
       paymentMethod: pay,
       note,
       couponCode: applied?.code || '',
-      locationLink,
       user,
       isAr,
+      clientOrderId: clientOrderIdRef.current,
     };
     onOrderPlaced(payload);
   };
@@ -138,19 +97,12 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
       <div className="mx-auto max-w-[600px] px-4 pb-28 pt-5">
         <Section>
           <span className={label}>{isAr ? 'نوع الطلب' : 'ORDER TYPE'}</span>
-          <div className="flex gap-2.5">
-            <button className={seg(orderType === 'pickup')} onClick={() => setOrderType('pickup')}>
-              {isAr ? '🏃 استلام' : '🏃 Pickup'}
-            </button>
-            <button className={seg(orderType === 'delivery')} onClick={() => setOrderType('delivery')}>
-              {isAr ? '🛵 توصيل' : '🛵 Delivery'}
-            </button>
-          </div>
+          <div className={seg(true)}>{isAr ? '🏃 استلام من الفرع' : '🏃 Pickup at Branch'}</div>
         </Section>
 
         <Section>
           <span className={label}>{isAr ? 'الفرع' : 'BRANCH'}</span>
-          {BRANCHES.map((b) => {
+          {branches.map((b) => {
             const on = branch === b.id;
             return (
               <motion.button
@@ -172,85 +124,28 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
           })}
         </Section>
 
-        {orderType === 'pickup' && (
-          <Section>
-            <span className={label}>⏰ {isAr ? 'وقت الاستلام' : 'PICKUP TIME'}</span>
-            <div className="flex flex-wrap gap-2">
-              {PICKUP_SLOTS.map((s) => {
-                const on = pickupTime === s;
-                return (
-                  <button
-                    key={s}
-                    onClick={() => setPickupTime(s)}
-                    className="rounded-full border-2 px-4 py-2 text-xs font-black transition"
-                    style={{
-                      borderColor: on ? '#E10600' : 'rgba(30,18,6,0.10)',
-                      background: on ? '#E10600' : '#FFFFFF',
-                      color: on ? '#fff' : '#8C7A64',
-                    }}
-                  >
-                    {s}
-                  </button>
-                );
-              })}
-            </div>
-          </Section>
-        )}
-
-        {orderType === 'delivery' && (
-          <Section>
-            <div className="card-surface p-4">
-              <span className={label}>📍 {isAr ? 'الموقع' : 'LOCATION'}</span>
-              {locStatus === 'idle' && (
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={requestLoc}
-                  className="sheen w-full rounded-2xl bg-brand-red py-3.5 text-sm font-black text-white shadow-red"
+        <Section>
+          <span className={label}>⏰ {isAr ? 'وقت الاستلام' : 'PICKUP TIME'}</span>
+          <div className="flex flex-wrap gap-2">
+            {PICKUP_SLOTS.map((s) => {
+              const on = pickupTime === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setPickupTime(s)}
+                  className="rounded-full border-2 px-4 py-2 text-xs font-black transition"
+                  style={{
+                    borderColor: on ? '#E10600' : 'rgba(30,18,6,0.10)',
+                    background: on ? '#E10600' : '#FFFFFF',
+                    color: on ? '#fff' : '#8C7A64',
+                  }}
                 >
-                  {isAr ? '📍 مشاركة موقعي' : '📍 Share My Location'}
-                </motion.button>
-              )}
-              {locStatus === 'loading' && (
-                <div className="py-3 text-center font-bold text-brand-muted">
-                  {isAr ? 'جاري تحديد الموقع...' : 'Getting your location...'}
-                </div>
-              )}
-              {locStatus === 'found' && (
-                <div>
-                  <div className="mb-1.5 font-black text-brand-green">✅ {distance} km {isAr ? 'بعيد' : 'away'}</div>
-                  <div className="text-lg font-black text-brand-red">
-                    {isAr ? 'التوصيل' : 'Delivery'}: {money(deliveryFee || 0)}
-                  </div>
-                  {coords && (
-                    <a
-                      href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 block text-xs font-bold text-brand-red underline"
-                    >
-                      🗺️ {isAr ? 'عرض على الخريطة' : 'View on map'}
-                    </a>
-                  )}
-                </div>
-              )}
-              {locStatus === 'unavailable' && (
-                <div className="font-black text-brand-red">
-                  ⚠️ {isAr ? 'خارج نطاق التوصيل (7 كم كحد أقصى)' : 'Outside delivery range (max 7km)'}
-                </div>
-              )}
-              {locStatus === 'error' && (
-                <div>
-                  <div className="mb-2 text-xs font-bold text-brand-red">
-                    {isAr ? 'تعذر تحديد الموقع' : 'Could not get location'}
-                  </div>
-                  <button onClick={requestLoc} className="rounded-xl border-2 border-brand-red px-4 py-2 text-xs font-black text-brand-red">
-                    {isAr ? 'حاول مجدداً' : 'Try again'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </Section>
-        )}
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
 
         <Section>
           <span className={label}>{isAr ? 'طريقة الدفع' : 'PAYMENT'}</span>
@@ -354,7 +249,6 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
               {[
                 [isAr ? 'المجموع الفرعي' : 'Subtotal', money(totals.subtotal)],
                 [isAr ? 'رسوم المنصة' : 'Platform Fee', money(totals.pFee)],
-                ...(orderType === 'delivery' && totals.dFee ? [[isAr ? 'التوصيل' : 'Delivery', money(totals.dFee)]] : []),
                 ...(discount ? [[isAr ? 'الخصم' : 'Discount', '- ' + money(discount)]] : []),
               ].map(([l, v], i) => (
                 <div key={i} className="mb-1.5 flex justify-between text-xs font-bold text-brand-muted">

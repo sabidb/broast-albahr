@@ -11,6 +11,7 @@ import {
   onSnapshot,
   getDocs,
   updateDoc,
+  writeBatch,
   serverTimestamp,
   increment,
   runTransaction,
@@ -22,6 +23,7 @@ import {
   limit,
   type Firestore,
 } from 'firebase/firestore';
+import type { Branch } from './data';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
 import type { Menu } from './data';
 
@@ -140,16 +142,28 @@ export const FB = {
     return String(nxt).padStart(6, '0');
   },
 
-  /** Save a new order. Returns { fbId, orderNo }. Status starts as 'pending'. */
+  /**
+   * Save a new order. Returns { fbId, orderNo }. Idempotent on `clientOrderId`:
+   * a retry with the same key returns the original doc instead of double-writing.
+   */
   async saveOrder(o: Record<string, unknown>): Promise<{ fbId: string | null; orderNo: string }> {
     const orderNo = (o.orderNo as string) || (await FB.nextOrderNo());
     if (!db) return { fbId: null, orderNo };
+    const clientOrderId = o.clientOrderId as string | undefined;
     try {
+      if (clientOrderId) {
+        const existing = await getDocs(query(collection(db, 'orders'), where('clientOrderId', '==', clientOrderId), limit(1)));
+        if (!existing.empty) {
+          const d = existing.docs[0];
+          return { fbId: d.id, orderNo: (d.data().orderNo as string) || orderNo };
+        }
+      }
       const ref = await addDoc(collection(db, 'orders'), {
         ...o,
         orderNo,
         createdAt: serverTimestamp(),
         status: 'new',
+        statusHistory: [{ status: 'new', at: new Date().toISOString() }],
       });
       return { fbId: ref.id, orderNo };
     } catch {
@@ -163,7 +177,6 @@ export const FB = {
     loyaltyPoints?: number;
     firstSeen?: string;
     lastAddress?: string;
-    locationLink?: string;
   }) {
     if (!db) return;
     try {
@@ -230,11 +243,14 @@ export const FB = {
     }
   },
 
-  /** Live stream of orders (newest first) for the admin panel. */
-  onOrdersChange(cb: (orders: any[]) => void): Unsub {
+  /** Live stream of orders (newest first). Pass `branchId` to scope the stream to one branch (Phase 4 will require this). */
+  onOrdersChange(cb: (orders: any[]) => void, branchId?: string | null): Unsub {
     if (!db) return noop;
     try {
-      return onSnapshot(collection(db, 'orders'), (s) => {
+      const ref = branchId
+        ? query(collection(db, 'orders'), where('branch', '==', branchId))
+        : collection(db, 'orders');
+      return onSnapshot(ref, (s) => {
         const o = s.docs.map((d) => ({ fbId: d.id, ...d.data() }));
         o.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         cb(o);
@@ -259,7 +275,11 @@ export const FB = {
   async updateOrderStatus(fbId: string, status: string) {
     if (!db) return;
     try {
-      await updateDoc(doc(db, 'orders', fbId), { status, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'orders', fbId), {
+        status,
+        updatedAt: serverTimestamp(),
+        statusHistory: arrayUnion({ status, at: new Date().toISOString() }),
+      });
     } catch {}
   },
 
@@ -318,13 +338,35 @@ export const FB = {
   async markAllNotificationsRead(phone: string) {
     if (!db) return;
     try {
-      const snap = await getDocs(collection(db, 'notifications', phone, 'items'));
-      await Promise.all(
-        snap.docs
-          .filter((d) => !d.data().read)
-          .map((d) => updateDoc(d.ref, { read: true })),
-      );
+      const q1 = query(collection(db, 'notifications', phone, 'items'), where('read', '==', false));
+      const snap = await getDocs(q1);
+      if (snap.empty) return;
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+      await batch.commit();
     } catch {}
+  },
+
+  /** Live subscription to the `branches` collection (Phase 4 replaces the hardcoded list). */
+  onBranchesChange(cb: (branches: Branch[]) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(collection(db, 'branches'), (s) => {
+        cb(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Branch, 'id'>) })));
+      });
+    } catch {
+      return noop;
+    }
+  },
+
+  async getBranches(): Promise<Branch[]> {
+    if (!db) return [];
+    try {
+      const snap = await getDocs(collection(db, 'branches'));
+      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Branch, 'id'>) }));
+    } catch {
+      return [];
+    }
   },
 
   /** Live customer-facing announcement banner. */

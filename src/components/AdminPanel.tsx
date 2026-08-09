@@ -392,7 +392,7 @@ function OrdersManage({ orders, setStatus }: { orders: any[]; setStatus: (o: any
                     </span>
                   </div>
                   <div className="mt-1 text-[12px] font-bold text-brand-muted">
-                    {o.userName || '—'} · {o.userPhone || ''} · {o.orderType === 'pickup' ? '🏃 Pickup' : '🛵 Delivery'}
+                    {o.userName || '—'} · {o.userPhone || ''} · 🏃 Pickup
                     {o.date ? ` · ${formatDate(o.date)}` : ''}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">

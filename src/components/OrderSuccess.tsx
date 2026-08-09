@@ -142,16 +142,10 @@ export default function OrderSuccess({
                 {isAr ? 'نوع الطلب' : 'Type'}
               </div>
               <div className="mt-0.5 text-[13px] font-black leading-tight text-brand-ink">
-                {order.orderType === 'pickup'
-                  ? isAr
-                    ? 'استلام 🏃'
-                    : 'Pickup 🏃'
-                  : isAr
-                    ? 'توصيل 🛵'
-                    : 'Delivery 🛵'}
+                {isAr ? 'استلام 🏃' : 'Pickup 🏃'}
               </div>
             </div>
-            {order.orderType === 'pickup' && order.pickupTime && (
+            {order.pickupTime && (
               <div className="col-span-2 rounded-xl border border-brand-line bg-white px-3 py-2.5">
                 <div className="text-[10px] font-black uppercase tracking-wide text-brand-muted">
                   {isAr ? 'وقت الاستلام' : 'Pickup Time'}
@@ -214,12 +208,6 @@ export default function OrderSuccess({
                 <div className="flex justify-between">
                   <span>{isAr ? 'رسوم المنصة' : 'Platform Fee'}</span>
                   <span>{money(t.pFee)}</span>
-                </div>
-              )}
-              {t.dFee > 0 && (
-                <div className="flex justify-between">
-                  <span>{isAr ? 'التوصيل' : 'Delivery'}</span>
-                  <span>{money(t.dFee)}</span>
                 </div>
               )}
               {t.discount > 0 && (

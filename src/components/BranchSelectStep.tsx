@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BRANCHES, type Branch } from '../lib/data';
+import { type Branch } from '../lib/data';
 import { calcDistance } from '../lib/utils';
 
 interface Props {
   isAr: boolean;
   onSelect: (branchId: string) => void;
   onBack?: () => void;
+  branches: Branch[];
 }
 
 const listStagger = { animate: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } } };
@@ -15,7 +16,7 @@ const cardVar = {
   animate: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 260, damping: 22 } },
 };
 
-export default function BranchSelectStep({ isAr, onSelect, onBack }: Props) {
+export default function BranchSelectStep({ isAr, onSelect, onBack, branches }: Props) {
   const [picked, setPicked] = useState<string | null>(null);
   const [nearest, setNearest] = useState<string | null>(null);
   const [geoStatus, setGeoStatus] = useState<'idle' | 'asking' | 'ok' | 'denied'>('idle');
@@ -25,22 +26,20 @@ export default function BranchSelectStep({ isAr, onSelect, onBack }: Props) {
     setGeoStatus('asking');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        let best: Branch | null = null;
-        let bestKm = Infinity;
-        BRANCHES.forEach((b) => {
-          const km = calcDistance(pos.coords.latitude, pos.coords.longitude, b.lat, b.lng);
-          if (km < bestKm) {
-            bestKm = km;
-            best = b;
-          }
-        });
+        const best = branches.reduce<{ b: Branch | null; km: number }>(
+          (acc, b) => {
+            const km = calcDistance(pos.coords.latitude, pos.coords.longitude, b.lat, b.lng);
+            return km < acc.km ? { b, km } : acc;
+          },
+          { b: null, km: Infinity },
+        ).b;
         if (best) setNearest(best.id);
         setGeoStatus('ok');
       },
       () => setGeoStatus('denied'),
       { timeout: 6000, maximumAge: 1000 * 60 * 10 },
     );
-  }, []);
+  }, [branches]);
 
   const confirm = () => {
     if (!picked) return;
@@ -93,7 +92,7 @@ export default function BranchSelectStep({ isAr, onSelect, onBack }: Props) {
         </motion.p>
 
         <motion.div variants={listStagger} initial="initial" animate="animate" className="mt-6 flex flex-col gap-3">
-          {BRANCHES.map((b) => {
+          {branches.map((b) => {
             const isPicked = picked === b.id;
             const isNear = nearest === b.id;
             return (

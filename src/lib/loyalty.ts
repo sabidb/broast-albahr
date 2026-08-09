@@ -28,7 +28,7 @@ export const TIERS: Tier[] = [
   { name: 'Bronze', nameAr: 'برونزي', min: 0, emoji: '🥉', color: '#C97B3C', perk: '1× points', perkAr: '١× نقاط', mult: 1 },
   { name: 'Silver', nameAr: 'فضي', min: 500, emoji: '🥈', color: '#8A97A6', perk: '1.1× points', perkAr: '١.١× نقاط', mult: 1.1 },
   { name: 'Gold', nameAr: 'ذهبي', min: 1500, emoji: '🥇', color: '#E8A21C', perk: '1.25× + priority', perkAr: '١.٢٥× + أولوية', mult: 1.25 },
-  { name: 'Platinum', nameAr: 'بلاتيني', min: 4000, emoji: '💎', color: '#12B5C9', perk: '1.5× + free delivery', perkAr: '١.٥× + توصيل مجاني', mult: 1.5 },
+  { name: 'Platinum', nameAr: 'بلاتيني', min: 4000, emoji: '💎', color: '#12B5C9', perk: '1.5× points + priority pickup', perkAr: '١.٥× نقاط + استلام أولوية', mult: 1.5 },
 ];
 
 export interface Reward {
