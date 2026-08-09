@@ -224,23 +224,31 @@ export const FB = {
     const orderNo = (o.orderNo as string) || (await FB.nextOrderNo());
     if (!db) return { fbId: null, orderNo };
     const clientOrderId = o.clientOrderId as string | undefined;
+    const payload = {
+      ...o,
+      orderNo,
+      createdAt: serverTimestamp(),
+      status: 'new',
+      statusHistory: [{ status: 'new', at: new Date().toISOString() }],
+    };
     try {
+      // Use the clientOrderId as the Firestore doc id so a retried tap is a
+      // no-op on the server (same key, doc already exists). Avoids an
+      // unfiltered LIST query which the rules deny for customers.
       if (clientOrderId) {
-        const existing = await getDocs(query(collection(db, 'orders'), where('clientOrderId', '==', clientOrderId), limit(1)));
-        if (!existing.empty) {
-          const d = existing.docs[0];
-          return { fbId: d.id, orderNo: (d.data().orderNo as string) || orderNo };
+        const ref = doc(db, 'orders', clientOrderId);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          return { fbId: ref.id, orderNo: (snap.data().orderNo as string) || orderNo };
         }
+        await setDoc(ref, payload);
+        return { fbId: ref.id, orderNo };
       }
-      const ref = await addDoc(collection(db, 'orders'), {
-        ...o,
-        orderNo,
-        createdAt: serverTimestamp(),
-        status: 'new',
-        statusHistory: [{ status: 'new', at: new Date().toISOString() }],
-      });
+      const ref = await addDoc(collection(db, 'orders'), payload);
       return { fbId: ref.id, orderNo };
-    } catch {
+    } catch (err) {
+      // Surface to the console so a denied write is diagnosable during testing.
+      try { console.error('[FB.saveOrder] write failed', err); } catch {}
       return { fbId: null, orderNo };
     }
   },

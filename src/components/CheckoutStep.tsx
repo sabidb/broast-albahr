@@ -5,6 +5,17 @@ import { computeTotals, money } from '../lib/utils';
 import ItemImage from './ItemImage';
 import type { Cart } from './MenuStep';
 
+// Hoisted so its component identity is stable across renders — an inline
+// definition inside CheckoutStep caused every keystroke to remount its
+// children, stealing focus from the note <textarea>.
+function Section({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-4">
+      {children}
+    </motion.div>
+  );
+}
+
 interface Props {
   cart: Cart;
   user: { name: string; phone: string };
@@ -74,12 +85,6 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
       a ? 'border-brand-red bg-brand-red text-white shadow-red' : 'border-brand-line bg-white text-brand-ink2'
     }`;
   const label = 'mb-2.5 block text-xs font-extrabold uppercase tracking-wide text-brand-muted';
-
-  const Section = ({ children }: { children: React.ReactNode }) => (
-    <motion.div initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-4">
-      {children}
-    </motion.div>
-  );
 
   return (
     <div className="min-h-screen">
