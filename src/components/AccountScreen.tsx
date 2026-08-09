@@ -12,7 +12,6 @@ export default function AccountScreen({
   streak,
   isAr,
   onToggleLang,
-  onAdmin,
   onLogout,
 }: {
   user: { name: string; phone: string };
@@ -20,7 +19,6 @@ export default function AccountScreen({
   streak: StreakState;
   isAr: boolean;
   onToggleLang: () => void;
-  onAdmin: () => void;
   onLogout: () => void;
 }) {
   const [chat, setChat] = useState(false);
@@ -32,7 +30,6 @@ export default function AccountScreen({
     { icon: '📍', label: isAr ? 'عناويني المحفوظة' : 'My addresses', onClick: () => setAddressesOpen(true) },
     { icon: '🌐', label: isAr ? 'اللغة: English' : 'Language: عربي', onClick: onToggleLang },
     { icon: '💬', label: isAr ? 'المساعد الذكي' : 'AI Assistant', onClick: () => setChat(true) },
-    { icon: '⚙️', label: isAr ? 'لوحة الإدارة' : 'Admin panel', onClick: onAdmin },
     { icon: '🚪', label: isAr ? 'تسجيل الخروج' : 'Log out', onClick: onLogout, danger: true },
   ];
 

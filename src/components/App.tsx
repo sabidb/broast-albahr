@@ -11,7 +11,6 @@ import OrdersScreen from './OrdersScreen';
 import OrderTrackingScreen from './OrderTrackingScreen';
 import AccountScreen from './AccountScreen';
 import NavDrawer from './NavDrawer';
-import AdminPanel, { AdminLogin } from './AdminPanel';
 import StreakModal from './StreakModal';
 import BranchSelectStep from './BranchSelectStep';
 import { NotificationsBell, NotificationsSheet } from './NotificationsSheet';
@@ -47,9 +46,8 @@ function AppInner() {
   const [lang, setLang] = useState<'ar' | 'en'>('ar');
   const [orders, setOrders] = useState<Order[]>([]);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
-  const [view, setView] = useState<'app' | 'admin'>('app');
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [restaurantClosed, setRestaurantClosed] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [tab, setTab] = useState<Tab>('menu');
   const [menuOpen, setMenuOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -62,8 +60,6 @@ function AppInner() {
 
   useEffect(() => {
     try {
-      const s = localStorage.getItem('ba_user');
-      if (s) setUser(JSON.parse(s));
       const b = localStorage.getItem('ba_branch');
       if (b) setBranchId(b);
     } catch {}
@@ -71,6 +67,19 @@ function AppInner() {
     setStreak(t.state);
     if (t.changed) setStreakTick(t);
     setLoyalty(loadLoyalty());
+    // Subscribe to Firebase Auth so a returning customer skips VerifyStep.
+    const unsub = FB.onAuth(async (au) => {
+      setAuthReady(true);
+      if (!au) {
+        setUser(null);
+        return;
+      }
+      // Auth token gives us the verified phone; look up display name from Firestore.
+      const doc = await FB.getCustomer(au.phone);
+      const nm = (doc?.name as string) || '';
+      setUser({ name: nm, phone: au.phone });
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -155,12 +164,9 @@ function AppInner() {
     setTimeout(() => setToast(null), 3200);
   };
 
-  const onVerified = (u: User) => {
-    setUser(u);
-    try {
-      localStorage.setItem('ba_user', JSON.stringify(u));
-    } catch {}
-  };
+  // Post-OTP callback — Firebase Auth has persisted the session; onAuth will refresh `user`,
+  // but we set it optimistically so the UI advances without a round-trip.
+  const onVerified = (u: User) => setUser(u);
 
   const onOrderPlaced = async (payload: any) => {
     // Reserve atomic per-branch 6-digit order-no first so the popup + Firestore match.
@@ -230,7 +236,7 @@ function AppInner() {
   const headerShadow = useTransform(scrollY, [0, 60], ['0 0 0 rgba(0,0,0,0)', '0 12px 30px rgba(180,60,0,0.14)']);
   const headerBlur = useTransform(scrollY, [0, 60], ['saturate(1) blur(6px)', 'saturate(1.2) blur(16px)']);
 
-  if (splash) {
+  if (splash || !authReady) {
     return (
       <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
         <AnimatePresence>{splash && <Splash onDone={() => setSplash(false)} />}</AnimatePresence>
@@ -248,24 +254,6 @@ function AppInner() {
 
   if (!branchId) {
     return <BranchSelectStep isAr={isAr} onSelect={(id) => setBranchId(id)} branches={branches} />;
-  }
-
-  if (view === 'admin') {
-    return (
-      <AdminPanel
-        menu={menu}
-        isOpen={!restaurantClosed}
-        onToggleOpen={(open) => {
-          setRestaurantClosed(!open);
-          FB.saveSettings({ isOpen: open });
-        }}
-        onSave={(m) => {
-          setMenu(m);
-          FB.saveMenu(m);
-        }}
-        onExit={() => setView('app')}
-      />
-    );
   }
 
   return (
@@ -353,11 +341,8 @@ function AppInner() {
               streak={streak}
               isAr={isAr}
               onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
-              onAdmin={() => setShowAdminLogin(true)}
-              onLogout={() => {
-                try {
-                  localStorage.removeItem('ba_user');
-                } catch {}
+              onLogout={async () => {
+                await FB.signOut();
                 setUser(null);
                 setCart({});
                 setTab('menu');
@@ -414,17 +399,14 @@ function AppInner() {
             branchName={branchLabel}
             onNavigate={setTab}
             onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
-            onAdmin={() => setShowAdminLogin(true)}
             onChangeBranch={() => {
               try {
                 localStorage.removeItem('ba_branch');
               } catch {}
               setBranchId(null);
             }}
-            onLogout={() => {
-              try {
-                localStorage.removeItem('ba_user');
-              } catch {}
+            onLogout={async () => {
+              await FB.signOut();
               setUser(null);
               setCart({});
               setTab('menu');
@@ -488,18 +470,6 @@ function AppInner() {
       <AnimatePresence>
         {notifOpen && user && (
           <NotificationsSheet phone={user.phone} isAr={isAr} onClose={() => setNotifOpen(false)} />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showAdminLogin && (
-          <AdminLogin
-            onLogin={() => {
-              setShowAdminLogin(false);
-              setView('admin');
-            }}
-            onCancel={() => setShowAdminLogin(false)}
-          />
         )}
       </AnimatePresence>
 

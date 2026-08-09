@@ -4,3 +4,14 @@ dist/
 .DS_Store
 *.log
 npm-debug.log*
+
+# Firebase service-account JSON — must NEVER be committed.
+service-account*.json
+*-firebase-adminsdk-*.json
+serviceAccountKey.json
+
+# Local emulator state.
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/

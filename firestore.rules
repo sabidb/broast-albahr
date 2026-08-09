@@ -1,64 +1,129 @@
 rules_version = '2';
 
-// Broast Al Bahr — Firestore rules.
+// Broast Al Bahr — Firestore rules · Phase 2 (auth-required).
 //
-// PHASE 1 STATE: the customer app has no Firebase Auth yet, so menu, restaurant
-// settings, orders, customers, counters, notifications and (read-only) branches
-// are open to the client. Phase 2 rewrites every match block to require
-// `request.auth` + custom claims (role/branchId). Do NOT relax anything here.
+// Customer app authenticates via Firebase Phone Auth. Every customer path is
+// keyed by phone number and validated against `request.auth.token.phone_number`.
+// Admin app authenticates via email/password; roles live in `users/{uid}` and
+// are read at rule time (custom claims land in Wave 2 once Blaze is enabled).
 //
-// This file must stay in sync with:
-//   sabidb/Al-bahr-admin/firestore.rules
-// Both repos share one Firebase project (broast-al-bahr) — the deployed rule
-// set is whichever repo was pushed last.
+// This file must stay in sync with sabidb/Al-bahr-admin/firestore.rules.
+// Both apps share one Firebase project (broast-al-bahr).
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Live menu, restaurant open/closed, announcement banner, invoice/printer
-    // config, coupons config. Read by customers, written by admin (Phase 2:
-    // writes will require role in ['owner','branch']).
+    // ── helpers ──────────────────────────────────────────────────────────
+    function signedIn() { return request.auth != null; }
+
+    function customerPhone() {
+      // Firebase phone auth stores E.164 like "+9665XXXXXXXX"; app stores keys
+      // in the legacy "05XXXXXXXX" form. Normalise for comparison.
+      return signedIn() && request.auth.token.phone_number != null
+        ? '0' + request.auth.token.phone_number.substring(4)
+        : '';
+    }
+
+    function ownsCustomer(phone) {
+      return signedIn() && customerPhone() == phone;
+    }
+
+    function isStaff() {
+      // Owner + branch manager both count as staff. Read the role from users/{uid}.
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['owner', 'branch'];
+    }
+
+    function isOwner() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+    }
+
+    function staffBranch() {
+      return signedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('branchId', '')
+        : '';
+    }
+
+    function isBranchStaff(branchId) {
+      return isOwner() || (isStaff() && staffBranch() == branchId);
+    }
+
+    // ── collections ──────────────────────────────────────────────────────
+
+    // Live menu, restaurant open/closed, announcement, per-branch invoice/printer
+    // configs, coupons config. Public read (any signed-in user). Owner-only write.
     match /settings/{doc} {
-      allow read, write: if true;
+      allow read: if signedIn();
+      allow write: if isOwner();
     }
 
-    // Orders placed by customers. Customer app also reads them back for history.
-    // Phase 2: create by authenticated customers only, mutate by staff only.
-    match /orders/{orderId} {
-      allow read, write: if true;
+    // Branches — public read for the customer branch picker + admin lists.
+    // Owner creates/deletes/renames branches. Branch manager can edit only
+    // their own branch's mutable fields (hours, phone, address, active flag)
+    // — enforced by locking id/whitelisted fields; Phase 4 fills in the field
+    // whitelist once the branch schema stabilises.
+    match /branches/{branchId} {
+      allow read: if signedIn();
+      allow create, delete: if isOwner();
+      allow update: if isBranchStaff(branchId);
     }
 
-    // Customer loyalty profiles keyed by phone. Phase 2: keyed by Auth uid.
+    // Customer profiles keyed by legacy phone. Owning customer OR any staff
+    // may read/write. Cross-customer read denied.
     match /customers/{phone} {
-      allow read, write: if true;
+      allow read, write: if ownsCustomer(phone) || isStaff();
+    }
+
+    // Orders: customers create their own (server-side pricing lands in Phase 6);
+    // customers read only their own; staff read/write scoped by branch.
+    match /orders/{orderId} {
+      allow create: if signedIn()
+        && request.resource.data.userPhone == customerPhone()
+        && request.resource.data.branch is string;
+      allow read: if (signedIn() && resource.data.userPhone == customerPhone())
+        || isBranchStaff(resource.data.branch);
+      // Rating: the owning customer may attach a rating; everything else is staff-only.
+      allow update: if isBranchStaff(resource.data.branch)
+        || (signedIn()
+            && resource.data.userPhone == customerPhone()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating']));
+      allow delete: if isOwner();
     }
 
     // Per-branch atomic order-number counters (orderNo-{branchId}).
-    // MUST be readable/writable or the transaction falls back to a local counter.
+    // Any signed-in customer needs read+write during checkout transaction.
+    // Phase 6 moves order creation server-side and locks these to functions.
     match /counters/{counterId} {
-      allow read, write: if true;
+      allow read, write: if signedIn();
     }
 
-    // Customer inbox notifications (subcollection under phone).
+    // Coupons catalog: read for signed-in clients (customer app validates codes
+    // client-side today; Phase 10 moves redemption server-side). Owner writes.
+    match /coupons/{code} {
+      allow read: if signedIn();
+      allow write: if isOwner();
+    }
+
+    // Customer inbox notifications — owning customer reads/marks-read;
+    // any staff writes messages.
     match /notifications/{phone}/items/{itemId} {
-      allow read, write: if true;
+      allow read, update: if ownsCustomer(phone);
+      allow create: if isStaff();
+      allow delete: if isOwner();
     }
 
-    // Branches — public read for customer branch picker, writes will be
-    // owner-only (Phase 4). Left open in Phase 1 so the admin app's existing
-    // branch CRUD keeps working with no rule change.
-    match /branches/{branchId} {
-      allow read, write: if true;
-    }
-
-    // Staff role profiles (email, role, branchId). Loaded by the admin app
-    // right after Firebase Auth sign-in, so authenticated reads are required.
-    // Writes remain locked to the owner via the admin UI + Auth account level.
+    // Staff role profiles. Any signed-in admin reads the roster (needed to
+    // render "Staff Management"). Owner-only writes so a branch manager can't
+    // promote themselves.
     match /users/{uid} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow read: if isStaff();
+      allow write: if isOwner();
     }
 
+    // Everything else denied.
     match /{document=**} {
       allow read, write: if false;
     }

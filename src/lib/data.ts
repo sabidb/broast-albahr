@@ -24,7 +24,6 @@ export interface Branch {
 }
 export interface Coupon { discount: number; type: 'percent' | 'fixed'; label: string; }
 
-export const ADMIN_PASSWORD = 'albahr2024';
 export const WHATSAPP_NUMBER = '966500959394';
 export const VAT_RATE = 0.15;
 
