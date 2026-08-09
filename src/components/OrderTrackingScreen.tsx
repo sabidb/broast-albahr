@@ -39,6 +39,8 @@ export default function OrderTrackingScreen({ order, isAr, onClose, onRate }: Pr
   const [showRate, setShowRate] = useState(false);
   const [stars, setStars] = useState(5);
   const [comment, setComment] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelErr, setCancelErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!order.fbId) return;
@@ -50,9 +52,30 @@ export default function OrderTrackingScreen({ order, isAr, onClose, onRate }: Pr
   }, [order.fbId]);
 
   const status = normalize(live?.status);
+  const rawStatus = String(live?.status || '').toLowerCase();
   const currentIdx = STEPS.findIndex((s) => s.key === status);
   const done = status === 'completed';
   const cancelled = status === 'cancelled' || status === 'refunded';
+  // A customer can only cancel while the kitchen has not yet accepted the
+  // order — after that the callable will refuse and they need to call the
+  // branch. Mirror the server rule locally to hide the button once too late.
+  const canCancel = !!order.fbId && ['new', 'pending'].includes(rawStatus);
+
+  const doCancel = async () => {
+    if (!order.fbId) return;
+    const ok = window.confirm(isAr
+      ? 'إلغاء الطلب؟ لا يمكن التراجع بعد الإلغاء.'
+      : 'Cancel this order? This cannot be undone.');
+    if (!ok) return;
+    setCancelling(true);
+    setCancelErr(null);
+    try {
+      const res = await FB.cancelMyOrder(order.fbId, 'customer');
+      if (!res.ok) setCancelErr(res.error || (isAr ? 'تعذّر الإلغاء' : 'Could not cancel'));
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   useEffect(() => {
     if (done && !live?.rating && !showRate) {
@@ -207,6 +230,28 @@ export default function OrderTrackingScreen({ order, isAr, onClose, onRate }: Pr
             </div>
             <div className="mt-1 text-2xl">{'⭐️'.repeat(live.rating.stars)}</div>
             {live.rating.comment && <div className="mt-1 text-[12px] font-semibold text-brand-muted">"{live.rating.comment}"</div>}
+          </div>
+        )}
+
+        {canCancel && (
+          <div className="mt-4">
+            <button
+              onClick={doCancel}
+              disabled={cancelling}
+              className="w-full rounded-2xl border-2 border-brand-red bg-white py-3 text-[13px] font-black text-brand-red transition disabled:opacity-60"
+            >
+              {cancelling
+                ? (isAr ? 'جارٍ الإلغاء…' : 'Cancelling…')
+                : (isAr ? '❌ إلغاء الطلب' : '❌ Cancel order')}
+            </button>
+            {cancelErr && (
+              <div className="mt-2 text-[12px] font-bold text-brand-red">{cancelErr}</div>
+            )}
+            <div className="mt-1 text-[11px] font-semibold text-brand-muted">
+              {isAr
+                ? 'يمكنك الإلغاء قبل قبول الفرع الطلب فقط.'
+                : 'You can cancel only until the branch accepts the order.'}
+            </div>
           </div>
         )}
       </div>

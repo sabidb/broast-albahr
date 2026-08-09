@@ -36,8 +36,9 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
+import { getFunctions, httpsCallable, type Functions } from 'firebase/functions';
 import type { Branch, Menu } from './data';
-import { validateOrder, validateCustomer, validateBranch, SchemaError } from './schema';
+import { validateCustomer, validateBranch, SchemaError } from './schema';
 import { deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -59,6 +60,7 @@ let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
 let auth: Auth | null = null;
+let fns: Functions | null = null;
 try {
   app = initializeApp(firebaseConfig);
   // ignoreUndefinedProperties: schema.ts validators (validateOrder etc)
@@ -76,6 +78,9 @@ try {
   }
   storage = getStorage(app);
   auth = getAuth(app);
+  // Callables live in me-west1 alongside Firestore. Phase 5 uses `submitOrder`
+  // and `updateOrderStatus` for server-side order writes.
+  try { fns = getFunctions(app, 'me-west1'); } catch { fns = null; }
   // App Check runs in the browser only; skip during SSR / tests.
   if (typeof window !== 'undefined') {
     try {
@@ -232,56 +237,72 @@ export const FB = {
   },
 
   /**
-   * Save a new order. Returns { fbId, orderNo }. Idempotent on `clientOrderId`:
-   * a retry with the same key returns the original doc instead of double-writing.
+   * Submit a new order via the `submitOrder` callable (Phase 5).
+   *
+   * The client sends only the branch, the per-item id + qty + note, the
+   * chosen payment/pickup slot and the coupon code. Everything else — item
+   * prices, availability, totals, VAT, orderNo, statusHistory — is looked up
+   * and computed by the Cloud Function against Firestore-side data. Prices
+   * can no longer be manipulated from the browser.
+   *
+   * Idempotent on `clientOrderId`: a retried tap returns the original doc
+   * instead of minting a new orderNo.
    */
   async saveOrder(o: Record<string, unknown>): Promise<{ fbId: string | null; orderNo: string; error?: string }> {
-    // Single source of truth for the order number: mint it here, using the
-    // caller's branch so the per-branch counter (orderNo-<branchId>) ticks
-    // instead of the global one. Pre-generating in the UI and passing it
-    // through was the shape that let a re-entrant click consume two counter
-    // values and race two setDoc writes against the same clientOrderId —
-    // whichever finished last won in Firestore, so the app could show 100011
-    // while the persisted doc kept 100010.
-    const orderNo = (o.orderNo as string) || (await FB.nextOrderNo(o.branch as string | undefined));
-    if (!db) return { fbId: null, orderNo, error: 'no-db' };
-    const clientOrderId = o.clientOrderId as string | undefined;
-    // Validate BEFORE stamping createdAt so a rejected payload never mints
-    // a phantom orderNo write. Throws SchemaError with a clear field path.
-    let validated: Record<string, unknown>;
-    try {
-      validated = validateOrder({ ...o, orderNo, status: 'new' }) as Record<string, unknown>;
-    } catch (err) {
-      const msg = err instanceof SchemaError ? err.message : String(err);
-      try { console.error('[FB.saveOrder] rejected by schema:', msg); } catch {}
-      return { fbId: null, orderNo, error: msg };
-    }
-    const payload = {
-      ...validated,
-      createdAt: serverTimestamp(),
-      statusHistory: [{ status: 'new', at: new Date().toISOString() }],
+    const clientOrderId = (o.clientOrderId as string) || '';
+    if (!fns) return { fbId: null, orderNo: '', error: 'functions-unavailable' };
+    const rawItems = Array.isArray(o.items) ? (o.items as any[]) : [];
+    const itemsPayload = rawItems.map((it) => {
+      const trim: any = { id: it?.id, qty: Number(it?.qty) };
+      if (it?.note) trim.note = String(it.note);
+      return trim;
+    });
+    const payload: Record<string, unknown> = {
+      clientOrderId,
+      branch: String(o.branch || ''),
+      items: itemsPayload,
+      paymentMethod: (o.paymentMethod as string) || 'cash',
+      orderType: (o.orderType as string) || 'pickup',
     };
+    if (o.pickupTime) payload.pickupTime = String(o.pickupTime);
+    if (o.note) payload.note = String(o.note);
+    if (o.couponCode) payload.couponCode = String(o.couponCode);
     try {
-      // setDoc against a fixed client-chosen id is inherently idempotent — a
-      // retry writes to the same path with the same payload. No preflight
-      // getDoc (a getDoc on a nonexistent doc can trip strict read rules
-      // that inspect resource.data, and we don't need one anyway).
-      if (clientOrderId) {
-        const ref = doc(db, 'orders', clientOrderId);
-        await setDoc(ref, payload);
-        return { fbId: ref.id, orderNo };
-      }
-      const ref = await addDoc(collection(db, 'orders'), payload);
-      return { fbId: ref.id, orderNo };
+      const call = httpsCallable<Record<string, unknown>, { fbId: string; orderNo: string; status: string; existing: boolean }>(fns, 'submitOrder');
+      const res = await call(payload);
+      const d = res.data;
+      return { fbId: d.fbId, orderNo: d.orderNo };
     } catch (err: any) {
-      // Bubble Firestore's real error code (e.g. "permission-denied") back to
-      // the caller so the UI can surface it as a toast — silent failures
-      // are what let today's regression sit unnoticed.
       const code = err?.code || err?.name || 'unknown';
-      const msg = err?.message || String(err);
-      try { console.error('[FB.saveOrder] write failed:', code, msg, err); } catch {}
-      return { fbId: null, orderNo, error: `${code}: ${msg}` };
+      const msg = err?.details?.message || err?.message || String(err);
+      try { console.error('[FB.saveOrder] submitOrder failed:', code, msg, err); } catch {}
+      return { fbId: null, orderNo: '', error: `${code}: ${msg}` };
     }
+  },
+
+  /**
+   * Change an order's status via the `updateOrderStatus` callable (Phase 5).
+   * The server enforces the allowed-transition table and role-scoped
+   * authorization. Customers can only invoke this to cancel their own order
+   * while it is still `new` or `pending`; everything else is staff-only.
+   */
+  async updateOrderStatus(orderId: string, status: string, reason?: string): Promise<{ ok: boolean; error?: string }> {
+    if (!fns) return { ok: false, error: 'functions-unavailable' };
+    try {
+      const call = httpsCallable<{ orderId: string; status: string; reason?: string }, { ok: boolean; status: string }>(fns, 'updateOrderStatus');
+      await call({ orderId, status, reason });
+      return { ok: true };
+    } catch (err: any) {
+      const code = err?.code || err?.name || 'unknown';
+      const msg = err?.details?.message || err?.message || String(err);
+      try { console.error('[FB.updateOrderStatus] failed:', code, msg); } catch {}
+      return { ok: false, error: `${code}: ${msg}` };
+    }
+  },
+
+  /** Convenience wrapper for the customer-side cancel button. */
+  async cancelMyOrder(orderId: string, reason?: string) {
+    return FB.updateOrderStatus(orderId, 'cancelled', reason);
   },
 
   async saveCustomer(d: {
@@ -457,17 +478,6 @@ export const FB = {
     } catch {
       return noop;
     }
-  },
-
-  async updateOrderStatus(fbId: string, status: string) {
-    if (!db) return;
-    try {
-      await updateDoc(doc(db, 'orders', fbId), {
-        status,
-        updatedAt: serverTimestamp(),
-        statusHistory: arrayUnion({ status, at: new Date().toISOString() }),
-      });
-    } catch {}
   },
 
   /** Save customer rating + comment on a completed order. */

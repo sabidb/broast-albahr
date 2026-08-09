@@ -103,6 +103,10 @@ export function validateCustomer(input: Record<string, unknown>): CustomerDoc {
 export const ORDER_STATUSES = [
   'new', 'pending', 'accepted', 'preparing', 'cooking',
   'almost_ready', 'ready', 'done', 'completed', 'cancelled', 'refunded',
+  // Phase 5: parked state for a submitted order whose payment fails. Cash is
+  // the only method today, so this only fires for future card/prepaid flows,
+  // but the enum needs it so the state machine has somewhere to send them.
+  'payment_failed',
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const PAYMENT_METHODS_ALLOWED = ['cash', 'card', 'prepaid'] as const;

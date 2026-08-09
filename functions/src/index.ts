@@ -1,17 +1,27 @@
 /**
  * Broast Al Bahr — Cloud Functions
  *
- * Wave 2.1 (post-Blaze). Callables that need privileged Admin-SDK access:
- *   - setRole:  owner assigns role + branchId to a Firebase Auth user. Sets
- *               a custom claim AND mirrors it into `users/{uid}` so today's
- *               rules (which read the users doc) continue to work while the
- *               ecosystem migrates to claim-based checks.
- *   - whoami:   returns the caller's own role + branchId from their custom
- *               claim, so the admin UI can gate itself without an extra
- *               Firestore read on every screen.
+ * Phase 5 additions:
+ *   - submitOrder:        server-side order creation. Validates menu items,
+ *                         per-branch availability, restaurant open, quantities,
+ *                         and recomputes every total from Firestore-side prices.
+ *                         Mints the order number transactionally, seeds a
+ *                         `statusHistory` entry, and is idempotent on
+ *                         `clientOrderId`.
+ *   - updateOrderStatus:  status transitions gated by a fixed table and by
+ *                         caller role (branch-scoped staff can only touch orders
+ *                         at their branch; customers can only cancel their own
+ *                         while still `new`/`pending`).
+ *   - refundOrder:        thin wrapper on updateOrderStatus that also stamps a
+ *                         `refund` block so reports can distinguish it from a
+ *                         plain cancel.
  *
- * Every write here comes through the Admin SDK, which bypasses Firestore
- * rules. That's the point — this is the one place role state is minted.
+ * Wave 2.1 (pre-Phase 5):
+ *   - setRole / whoami — role custom-claim minting for staff.
+ *
+ * Every write here goes through the Admin SDK, which bypasses Firestore rules —
+ * that's the point: it's the trusted server-side hop that lets us lock the
+ * client rules to "no direct order create, no direct status update".
  *
  * Region: me-west1 (co-located with Firestore). Runtime: Node 22.
  */
@@ -39,12 +49,6 @@ interface RoleClaim {
   branchId?: string;
 }
 
-/**
- * Read the caller's role from BOTH their custom claim AND their users/{uid}
- * doc, returning the strongest. The doc is a bootstrap fallback so the
- * original owner (seeded via scripts/set-owner-role.mjs) can invoke this
- * callable BEFORE their custom claim has been minted for the first time.
- */
 async function readCallerRole(uid: string): Promise<RoleClaim> {
   const [userRecord, docSnap] = await Promise.all([
     getAuth().getUser(uid),
@@ -79,9 +83,6 @@ export const setRole = onCall<SetRoleData>(async (req: CallableRequest<SetRoleDa
     }
   }
 
-  // Prevent the last owner from demoting themselves. A restaurant with zero
-  // owners has no way to promote anyone back — this callable itself refuses
-  // to run without an owner caller.
   if (targetUid === req.auth.uid && role !== 'owner') {
     const staff = await getFirestore()
       .collection('users')
@@ -98,10 +99,6 @@ export const setRole = onCall<SetRoleData>(async (req: CallableRequest<SetRoleDa
   const claim: RoleClaim = { role };
   if (role === 'branch' && branchId) claim.branchId = branchId;
 
-  // Custom claim on the Auth user + mirror the same shape into the users doc
-  // so the current rule set (which reads the doc) keeps working. Both writes
-  // are best-effort atomic — if either throws, the caller can retry safely
-  // (both writes are idempotent for the same input).
   await getAuth().setCustomUserClaims(targetUid, claim);
   await getFirestore().doc(`users/${targetUid}`).set(
     {
@@ -118,9 +115,6 @@ export const setRole = onCall<SetRoleData>(async (req: CallableRequest<SetRoleDa
     targetUid,
     role,
     branchId: role === 'branch' ? branchId : null,
-    // The custom claim only lands in the target user's ID token after they
-    // sign out and back in (or after their token refreshes ~1h later). The
-    // admin UI shows this note on success.
     signOutRequired: true,
   };
 });
@@ -131,4 +125,441 @@ export const whoami = onCall(async (req) => {
   }
   const { role, branchId } = await readCallerRole(req.auth.uid);
   return { uid: req.auth.uid, role, branchId: branchId ?? null };
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5 — Hardened ordering
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VAT_RATE = 0.15;
+const SA_PHONE = /^05\d{8}$/;
+const PICKUP_SLOTS_ALLOWED = new Set(['ASAP', '15 min', '30 min', '45 min', '1 hour']);
+const PAYMENT_METHODS_ALLOWED = new Set(['cash', 'card', 'prepaid']);
+const ORDER_TYPES_ALLOWED = new Set(['pickup', 'delivery']);
+
+/** Round to two decimal places in a way that stays stable across sums. */
+function money(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Tiered platform fee — mirrors src/lib/utils.ts platformFee. */
+function platformFee(subtotal: number): number {
+  const rate = subtotal >= 250 ? 0.04 : subtotal >= 100 ? 0.03 : 0.02;
+  return money(subtotal * rate);
+}
+
+/** Atomic per-branch order counter — increments by exactly 1. */
+async function mintOrderNo(branchId: string): Promise<string> {
+  const db = getFirestore();
+  const ref = db.doc(`counters/orderNo-${branchId}`);
+  const next = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists ? Number((snap.data() as any).value) : 99999;
+    const nxt = Math.max(Number.isFinite(cur) ? cur : 99999, 99999) + 1;
+    tx.set(ref, { value: nxt, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return nxt;
+  });
+  return String(next).padStart(6, '0');
+}
+
+interface SubmitOrderItemIn {
+  id: string | number;
+  qty: number;
+  note?: string;
+}
+
+interface SubmitOrderData {
+  clientOrderId: string;
+  branch: string;
+  items: SubmitOrderItemIn[];
+  paymentMethod?: string;
+  pickupTime?: string;
+  note?: string;
+  couponCode?: string;
+  orderType?: string;
+}
+
+interface FlatMenuItem {
+  id: string | number;
+  name?: string;
+  nameAr?: string;
+  price?: number;
+  emoji?: string;
+  available?: boolean;
+  branches?: string[];
+  availability?: Record<string, boolean>;
+}
+
+/**
+ * Server-side order submission. The client sends only { itemId, qty, note } —
+ * everything the customer sees on the order (prices, names, totals, VAT) is
+ * looked up + recomputed here from the trusted menu doc, so a manipulated
+ * client bundle cannot inflate discounts or drop prices.
+ */
+export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<SubmitOrderData>) => {
+  if (!req.auth) {
+    throw new HttpsError('unauthenticated', 'Sign in required.');
+  }
+  const uid = req.auth.uid;
+  const data = req.data ?? ({} as SubmitOrderData);
+
+  const clientOrderId = String(data.clientOrderId || '').trim();
+  if (!clientOrderId || clientOrderId.length > 80) {
+    throw new HttpsError('invalid-argument', 'clientOrderId required (1–80 chars).');
+  }
+  const branchId = String(data.branch || '').trim();
+  if (!branchId || branchId.length > 40) {
+    throw new HttpsError('invalid-argument', 'branch required.');
+  }
+  if (!Array.isArray(data.items) || data.items.length === 0) {
+    throw new HttpsError('invalid-argument', 'items required.');
+  }
+  if (data.items.length > 50) {
+    throw new HttpsError('invalid-argument', 'too many items (max 50).');
+  }
+  const paymentMethod = String(data.paymentMethod || 'cash');
+  if (!PAYMENT_METHODS_ALLOWED.has(paymentMethod)) {
+    throw new HttpsError('invalid-argument', `paymentMethod must be one of ${[...PAYMENT_METHODS_ALLOWED].join(', ')}.`);
+  }
+  const orderType = String(data.orderType || 'pickup');
+  if (!ORDER_TYPES_ALLOWED.has(orderType)) {
+    throw new HttpsError('invalid-argument', `orderType must be one of ${[...ORDER_TYPES_ALLOWED].join(', ')}.`);
+  }
+
+  const db = getFirestore();
+
+  // Idempotency: a retried tap with the same clientOrderId returns the
+  // original doc verbatim instead of re-writing (which would double-mint the
+  // orderNo).
+  const orderRef = db.doc(`orders/${clientOrderId}`);
+  const existing = await orderRef.get();
+  if (existing.exists) {
+    const d = existing.data() as any;
+    return {
+      fbId: existing.id,
+      orderNo: d.orderNo,
+      status: d.status,
+      existing: true,
+    };
+  }
+
+  // Customer profile — name + phone. Without a filled profile there is no
+  // one to notify or hand a bag to at the counter.
+  const custSnap = await db.doc(`customers/${uid}`).get();
+  if (!custSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Complete your profile before ordering.');
+  }
+  const cust = custSnap.data() as any;
+  const userName = String(cust.name || '').trim();
+  const userPhone = String(cust.phone || '').trim();
+  if (!userName || !SA_PHONE.test(userPhone)) {
+    throw new HttpsError('failed-precondition', 'Profile missing name or a valid Saudi phone.');
+  }
+
+  // Restaurant open?
+  const restSnap = await db.doc('settings/restaurant').get();
+  if (restSnap.exists && (restSnap.data() as any).isOpen === false) {
+    throw new HttpsError('failed-precondition', 'Restaurant is closed right now.');
+  }
+
+  // Branch active?
+  const branchSnap = await db.doc(`branches/${branchId}`).get();
+  if (!branchSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Unknown branch.');
+  }
+  const branchData = branchSnap.data() as any;
+  if (branchData.active === false) {
+    throw new HttpsError('failed-precondition', 'This branch is not accepting orders.');
+  }
+
+  // Menu lookup.
+  const menuSnap = await db.doc('settings/menu').get();
+  if (!menuSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Menu unavailable.');
+  }
+  const menu = ((menuSnap.data() as any).menu ?? {}) as Record<string, FlatMenuItem[]>;
+  const flat = new Map<string, FlatMenuItem>();
+  for (const cat of Object.values(menu)) {
+    if (!Array.isArray(cat)) continue;
+    for (const it of cat) {
+      if (it && it.id != null) flat.set(String(it.id), it);
+    }
+  }
+
+  const snapshotItems: any[] = [];
+  let subtotal = 0;
+  for (let i = 0; i < data.items.length; i++) {
+    const raw = data.items[i];
+    const key = String(raw?.id ?? '');
+    const it = flat.get(key);
+    if (!it) {
+      throw new HttpsError('failed-precondition', `Item ${key || `#${i}`} not on the menu.`);
+    }
+    if (it.available === false) {
+      throw new HttpsError('failed-precondition', `${it.name || key} is unavailable.`);
+    }
+    if (it.availability && it.availability[branchId] === false) {
+      throw new HttpsError('failed-precondition', `${it.name || key} is unavailable at this branch.`);
+    }
+    if (Array.isArray(it.branches) && it.branches.length > 0
+        && !it.branches.includes('all') && !it.branches.includes(branchId)) {
+      throw new HttpsError('failed-precondition', `${it.name || key} is not sold at this branch.`);
+    }
+    const qty = Number(raw?.qty);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 999) {
+      throw new HttpsError('invalid-argument', `Bad quantity for item ${key}.`);
+    }
+    const price = Number(it.price);
+    if (!Number.isFinite(price) || price < 0) {
+      throw new HttpsError('failed-precondition', `Item ${key} has no valid price.`);
+    }
+    subtotal = money(subtotal + price * qty);
+    const snap: any = {
+      id: typeof it.id === 'number' ? it.id : String(it.id),
+      name: String(it.name || ''),
+      price,
+      qty,
+    };
+    if (it.nameAr) snap.nameAr = String(it.nameAr);
+    if (it.emoji) snap.emoji = String(it.emoji);
+    if (raw?.note) snap.note = String(raw.note).slice(0, 500);
+    snapshotItems.push(snap);
+  }
+
+  // Coupon lookup — supports both the legacy `coupons/{code}` docs and the
+  // admin's `settings/coupons` items array. Phase 10 replaces this with the
+  // full reward engine; keep the shape here so old codes keep working.
+  let discount = 0;
+  let appliedCoupon: string | undefined;
+  const rawCode = String(data.couponCode || '').trim().toUpperCase();
+  if (rawCode) {
+    let value = 0;
+    let type: 'percent' | 'fixed' | null = null;
+    const cSnap = await db.doc(`coupons/${rawCode}`).get();
+    if (cSnap.exists) {
+      const c = cSnap.data() as any;
+      if (c.active !== false) {
+        value = Number(c.value ?? c.discount ?? 0);
+        type = c.type === 'fixed' ? 'fixed' : 'percent';
+      }
+    }
+    if (type == null) {
+      const bagSnap = await db.doc('settings/coupons').get();
+      if (bagSnap.exists) {
+        const arr: any[] = (bagSnap.data() as any).items || [];
+        const hit = arr.find((c) => String(c.code || '').toUpperCase() === rawCode);
+        if (hit && hit.active !== false) {
+          value = Number(hit.value ?? hit.discount ?? 0);
+          type = hit.type === 'fixed' ? 'fixed' : 'percent';
+        }
+      }
+    }
+    if (type && Number.isFinite(value) && value > 0) {
+      discount = type === 'percent'
+        ? money((subtotal * value) / 100)
+        : money(Math.min(value, subtotal));
+      appliedCoupon = rawCode;
+    }
+  }
+
+  const pFee = platformFee(subtotal);
+  const base = Math.max(0, money(subtotal + pFee - discount));
+  const vat = money((base * VAT_RATE) / (1 + VAT_RATE));
+  const total = base;
+
+  const orderNo = await mintOrderNo(branchId);
+  const nowIso = new Date().toISOString();
+
+  const payload: Record<string, unknown> = {
+    orderNo,
+    userUid: uid,
+    userName,
+    userPhone,
+    branch: branchId,
+    branchObj: branchData,
+    items: snapshotItems,
+    totals: { subtotal, pFee, discount, vat, total },
+    total,
+    paymentMethod,
+    orderType,
+    status: 'new',
+    statusHistory: [{ status: 'new', at: nowIso, by: 'customer' }],
+    clientOrderId,
+    createdAt: FieldValue.serverTimestamp(),
+    date: nowIso,
+    submittedVia: 'submitOrder@v1',
+  };
+  if (data.pickupTime && PICKUP_SLOTS_ALLOWED.has(data.pickupTime)) {
+    payload.pickupTime = data.pickupTime;
+  }
+  if (data.note) payload.note = String(data.note).slice(0, 500);
+  if (appliedCoupon) payload.couponCode = appliedCoupon;
+
+  await orderRef.set(payload);
+
+  return {
+    fbId: clientOrderId,
+    orderNo,
+    status: 'new',
+    existing: false,
+  };
+});
+
+// ── status transition table ─────────────────────────────────────────────
+// Terminal states (cancelled / refunded) have an empty exits list so nothing
+// can move them back. `payment_failed` exists so a future card/prepaid flow
+// can park an order there without wiping the record.
+const ALLOWED_TRANSITIONS: Record<string, readonly string[]> = {
+  new: ['pending', 'accepted', 'preparing', 'cancelled', 'payment_failed'],
+  pending: ['accepted', 'preparing', 'cancelled', 'payment_failed'],
+  accepted: ['preparing', 'cooking', 'ready', 'cancelled'],
+  preparing: ['cooking', 'almost_ready', 'ready', 'cancelled'],
+  cooking: ['almost_ready', 'ready', 'cancelled'],
+  almost_ready: ['ready', 'cancelled'],
+  ready: ['done', 'completed', 'cancelled'],
+  done: ['completed', 'refunded'],
+  completed: ['refunded'],
+  cancelled: [],
+  refunded: [],
+  payment_failed: ['cancelled', 'new'],
+};
+
+interface UpdateOrderStatusData {
+  orderId: string;
+  status: string;
+  reason?: string;
+}
+
+/**
+ * Change an order's status. Enforces the transition table + who is allowed to
+ * do what:
+ *   - staff (owner + branch-scoped) drive the kitchen states
+ *   - a customer can only cancel their own order while it is still
+ *     `new` or `pending` — after the kitchen has accepted it, they have to
+ *     call the branch.
+ */
+export const updateOrderStatus = onCall<UpdateOrderStatusData>(async (req: CallableRequest<UpdateOrderStatusData>) => {
+  if (!req.auth) {
+    throw new HttpsError('unauthenticated', 'Sign in required.');
+  }
+  const orderId = String(req.data?.orderId || '').trim();
+  const nextStatus = String(req.data?.status || '').trim();
+  const reason = req.data?.reason ? String(req.data.reason).slice(0, 300) : undefined;
+  if (!orderId || orderId.length > 128) {
+    throw new HttpsError('invalid-argument', 'orderId required.');
+  }
+  if (!nextStatus || !(nextStatus in ALLOWED_TRANSITIONS)) {
+    throw new HttpsError('invalid-argument', `Unknown status "${nextStatus}".`);
+  }
+
+  const db = getFirestore();
+  const ref = db.doc(`orders/${orderId}`);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', 'Order not found.');
+  }
+  const cur = snap.data() as any;
+  const curStatus = String(cur.status || 'new');
+  const branchId = String(cur.branch || '');
+
+  const caller = await readCallerRole(req.auth.uid);
+  const isOwner = caller.role === 'owner';
+  const isBranchStaff = isOwner || (caller.role === 'branch' && caller.branchId === branchId);
+  const ownsOrder = cur.userUid === req.auth.uid;
+  const customerCancel = ownsOrder && nextStatus === 'cancelled' && ['new', 'pending'].includes(curStatus);
+
+  if (!isBranchStaff && !customerCancel) {
+    throw new HttpsError('permission-denied', 'Not allowed to update this order.');
+  }
+
+  const legal = ALLOWED_TRANSITIONS[curStatus] || [];
+  if (!legal.includes(nextStatus)) {
+    throw new HttpsError('failed-precondition', `Illegal transition ${curStatus} → ${nextStatus}.`);
+  }
+
+  const historyEntry: Record<string, unknown> = {
+    status: nextStatus,
+    at: new Date().toISOString(),
+    by: customerCancel ? 'customer' : (caller.role || 'staff'),
+  };
+  if (reason) historyEntry.reason = reason;
+
+  const patch: Record<string, unknown> = {
+    status: nextStatus,
+    updatedAt: FieldValue.serverTimestamp(),
+    statusHistory: FieldValue.arrayUnion(historyEntry),
+  };
+  if (customerCancel) patch.cancelledBy = 'customer';
+  if (reason && nextStatus === 'cancelled') patch.declineReason = reason;
+
+  await ref.update(patch);
+  return { ok: true, status: nextStatus, previous: curStatus };
+});
+
+interface RefundOrderData {
+  orderId: string;
+  reason?: string;
+  amount?: number;
+}
+
+/**
+ * Mark an order as refunded and store a small refund block so financial
+ * reporting can separate cancellations from refunds. Owner-only —
+ * refunds affect money already collected.
+ */
+export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<RefundOrderData>) => {
+  if (!req.auth) {
+    throw new HttpsError('unauthenticated', 'Sign in required.');
+  }
+  const orderId = String(req.data?.orderId || '').trim();
+  if (!orderId || orderId.length > 128) {
+    throw new HttpsError('invalid-argument', 'orderId required.');
+  }
+  const reason = req.data?.reason ? String(req.data.reason).slice(0, 300) : undefined;
+  const amountRaw = req.data?.amount;
+  const amount = amountRaw != null ? Number(amountRaw) : undefined;
+  if (amount != null && (!Number.isFinite(amount) || amount < 0)) {
+    throw new HttpsError('invalid-argument', 'amount must be a non-negative number.');
+  }
+
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') {
+    throw new HttpsError('permission-denied', 'Only owners can issue refunds.');
+  }
+
+  const db = getFirestore();
+  const ref = db.doc(`orders/${orderId}`);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', 'Order not found.');
+  }
+  const cur = snap.data() as any;
+  const curStatus = String(cur.status || 'new');
+  const legal = ALLOWED_TRANSITIONS[curStatus] || [];
+  if (!legal.includes('refunded')) {
+    throw new HttpsError('failed-precondition', `Cannot refund order in status "${curStatus}".`);
+  }
+
+  const nowIso = new Date().toISOString();
+  const refundedAmount = amount != null ? money(amount) : money(Number(cur.total) || 0);
+  const historyEntry: Record<string, unknown> = {
+    status: 'refunded',
+    at: nowIso,
+    by: 'owner',
+    amount: refundedAmount,
+  };
+  if (reason) historyEntry.reason = reason;
+
+  await ref.update({
+    status: 'refunded',
+    updatedAt: FieldValue.serverTimestamp(),
+    statusHistory: FieldValue.arrayUnion(historyEntry),
+    refund: {
+      amount: refundedAmount,
+      reason: reason || null,
+      at: nowIso,
+      by: req.auth.uid,
+    },
+  });
+  return { ok: true, status: 'refunded', amount: refundedAmount };
 });

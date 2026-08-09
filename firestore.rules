@@ -106,46 +106,44 @@ service cloud.firestore {
       allow write: if ownsCustomer(uid) || isStaff();
     }
 
-    // Orders: customers create their own (userUid must match caller);
-    // customers read only their own; staff read/write scoped by branch.
+    // Orders — Phase 5 locks direct client creates. The submitOrder Cloud
+    // Function is the only writer: it validates prices, availability, branch
+    // and totals from the trusted menu doc, mints the orderNo atomically, and
+    // uses the Admin SDK (which bypasses these rules). A manipulated client
+    // bundle cannot fabricate an order any more.
     match /orders/{orderId} {
-      // Phase 3 shape checks — same guarantees the client-side validateOrder()
-      // enforces, mirrored server-side so a bypassed client can't sneak a
-      // malformed doc past. Keeps out empty items[], missing userPhone/orderNo,
-      // wrong types on totals — all preconditions the admin panel relies on.
-      allow create: if signedIn()
-        && request.resource.data.userUid == request.auth.uid
-        && request.resource.data.branch is string
-        && request.resource.data.branch.size() > 0
-        && request.resource.data.userPhone is string
-        && request.resource.data.userPhone.matches('^05[0-9]{8}$')
-        && request.resource.data.userName is string
-        && request.resource.data.orderNo is string
-        && request.resource.data.orderNo.matches('^[0-9]{6}$')
-        && request.resource.data.items is list
-        && request.resource.data.items.size() > 0
-        && request.resource.data.total is number
-        && request.resource.data.total >= 0
-        && request.resource.data.totals is map;
-      // Read is allowed for the owning uid, the owning phone (so history
-      // survives re-installs / new devices when the user re-enters their
-      // number), or branch-scoped staff.
+      allow create: if false;
+
+      // Read stays wide: owning uid, owning phone (so history survives a
+      // re-install / new device), or branch-scoped staff.
       allow read: if (signedIn() && resource.data.get('userUid', '') == request.auth.uid)
         || (callerPhone() != '' && resource.data.get('userPhone', '') == callerPhone())
         || isBranchStaff(resource.data.branch);
-      // Rating: the owning customer may attach a rating; everything else is staff-only.
+
+      // Customer-side updates are limited to attaching a rating. Everything
+      // else (status, statusHistory, totals, driver info, refund block) must
+      // go through the updateOrderStatus / refundOrder callables so the
+      // transition table + audit trail apply — the field allowlist below
+      // keeps staff from silently rewriting money fields via a direct patch.
+      allow update: if signedIn()
+        && resource.data.get('userUid', '') == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating']);
       allow update: if isBranchStaff(resource.data.branch)
-        || (signedIn()
-            && resource.data.get('userUid', '') == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating']));
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['status', 'statusHistory', 'orderNo', 'userUid', 'userPhone',
+                      'branch', 'items', 'totals', 'total', 'clientOrderId',
+                      'createdAt', 'refund', 'submittedVia']);
+
       allow delete: if isOwner();
     }
 
     // Per-branch atomic order-number counters (orderNo-{branchId}).
-    // Any signed-in customer needs read+write during checkout transaction.
-    // Phase 6 moves order creation server-side and locks these to functions.
+    // Phase 5 mints these inside the submitOrder callable via the Admin SDK,
+    // so direct writes are no longer needed. Reads stay open to signed-in
+    // callers for diagnostics.
     match /counters/{counterId} {
-      allow read, write: if signedIn();
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     // Coupons catalog: PUBLIC READ (codes are already embedded in the customer
