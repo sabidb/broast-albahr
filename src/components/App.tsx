@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
 import CountUp from './CountUp';
 import Splash from './Splash';
@@ -11,16 +11,17 @@ import OrdersScreen from './OrdersScreen';
 import OrderTrackingScreen from './OrderTrackingScreen';
 import AccountScreen from './AccountScreen';
 import NavDrawer from './NavDrawer';
-import AdminPanel, { AdminLogin } from './AdminPanel';
 import StreakModal from './StreakModal';
 import BranchSelectStep from './BranchSelectStep';
 import { NotificationsBell, NotificationsSheet } from './NotificationsSheet';
 import AnnouncementBanner from './AnnouncementBanner';
+import ErrorBoundary from './ErrorBoundary';
 
 export type Tab = 'menu' | 'rewards' | 'orders' | 'account';
 import { pageVariants } from './motion';
 import { money, APP_VERSION } from '../lib/utils';
-import { DEFAULT_MENU, BRANCHES, type Menu } from '../lib/data';
+import { DEFAULT_MENU, BRANCHES, type Branch, type Menu } from '../lib/data';
+import { filterMenuForBranch } from '../lib/items';
 import { FB } from '../lib/fb';
 import { tickStreak, loadStreak, type StreakState, type StreakTick } from '../lib/streak';
 import {
@@ -35,18 +36,18 @@ import type { Order } from './Invoice';
 
 type User = { name: string; phone: string };
 
-export default function App() {
+function AppInner() {
   const [splash, setSplash] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
+  const [branches, setBranches] = useState<Branch[]>(BRANCHES);
   const [menu, setMenu] = useState<Menu>(DEFAULT_MENU);
   const [cart, setCart] = useState<Cart>({});
   const [lang, setLang] = useState<'ar' | 'en'>('ar');
   const [orders, setOrders] = useState<Order[]>([]);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
-  const [view, setView] = useState<'app' | 'admin'>('app');
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [restaurantClosed, setRestaurantClosed] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [tab, setTab] = useState<Tab>('menu');
   const [menuOpen, setMenuOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -59,8 +60,6 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const s = localStorage.getItem('ba_user');
-      if (s) setUser(JSON.parse(s));
       const b = localStorage.getItem('ba_branch');
       if (b) setBranchId(b);
     } catch {}
@@ -68,24 +67,48 @@ export default function App() {
     setStreak(t.state);
     if (t.changed) setStreakTick(t);
     setLoyalty(loadLoyalty());
+    // Subscribe to Firebase Auth so a returning customer skips VerifyStep.
+    const unsub = FB.onAuth(async (au) => {
+      setAuthReady(true);
+      if (!au) {
+        setUser(null);
+        return;
+      }
+      // Auth token gives us the verified phone; look up display name from Firestore.
+      const doc = await FB.getCustomer(au.phone);
+      const nm = (doc?.name as string) || '';
+      setUser({ name: nm, phone: au.phone });
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
     let unsubMenu = () => {};
     let unsubSettings = () => {};
+    let unsubBranches = () => {};
     (async () => {
       const m = await FB.getMenu();
       if (m) setMenu(m);
       const s = await FB.getSettings();
       if (s && s.isOpen === false) setRestaurantClosed(true);
+      // Live branches from Firestore. Fall back to hardcoded BRANCHES when the collection is empty.
+      const seedBranches = await FB.getBranches();
+      if (seedBranches.length) setBranches(seedBranches);
+      unsubBranches = FB.onBranchesChange((bs) => {
+        if (bs.length) setBranches(bs);
+      });
       unsubMenu = FB.onMenuChange((mm) => mm && setMenu(mm));
       unsubSettings = FB.onSettingsChange((ss) => setRestaurantClosed(ss.isOpen === false));
     })();
     return () => {
       unsubMenu();
       unsubSettings();
+      unsubBranches();
     };
   }, []);
+
+  // Menu filtered to the customer's selected branch — respects admin-set per-branch availability.
+  const menuForBranch = useMemo(() => filterMenuForBranch(menu, branchId), [menu, branchId]);
 
   // Load persisted orders + subscribe to live updates for this user
   useEffect(() => {
@@ -104,9 +127,9 @@ export default function App() {
         paymentMethod: r.paymentMethod || 'cash',
         couponCode: r.couponCode || '',
         items: r.items || [],
-        totals: r.totals || { subtotal: 0, pFee: 0, dFee: 0, discount: 0, vat: 0, total: r.total || 0 },
+        totals: r.totals || { subtotal: 0, pFee: 0, discount: 0, vat: 0, total: r.total || 0 },
         fbId: r.fbId,
-        status: r.status || 'pending',
+        status: r.status || 'new',
         rating: r.rating || null,
       }));
       setOrders(shaped);
@@ -141,12 +164,9 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   };
 
-  const onVerified = (u: User) => {
-    setUser(u);
-    try {
-      localStorage.setItem('ba_user', JSON.stringify(u));
-    } catch {}
-  };
+  // Post-OTP callback — Firebase Auth has persisted the session; onAuth will refresh `user`,
+  // but we set it optimistically so the UI advances without a round-trip.
+  const onVerified = (u: User) => setUser(u);
 
   const onOrderPlaced = async (payload: any) => {
     // Reserve atomic per-branch 6-digit order-no first so the popup + Firestore match.
@@ -155,7 +175,7 @@ export default function App() {
       ...payload,
       orderNo,
       date: new Date().toISOString(),
-      status: 'pending',
+      status: 'new',
     };
     setOrders((prev) => [order, ...prev]);
     setLastOrder(order);
@@ -167,6 +187,7 @@ export default function App() {
       total: order.totals.total,
       orderNo,
       date: order.date,
+      clientOrderId: payload.clientOrderId,
     });
     if (saved.fbId) {
       // patch the local copies with the Firestore id so we can subscribe/track live.
@@ -182,7 +203,6 @@ export default function App() {
         phone: user.phone,
         loyaltyPoints: earned,
         lastAddress: payload.address || '',
-        locationLink: payload.locationLink || '',
       });
     showToast(isAr ? `+${earned} نقطة 🎁` : `+${earned} points 🎁`);
   };
@@ -208,7 +228,7 @@ export default function App() {
 
   const cartCount = Object.values(cart).reduce((s, i) => s + (i.qty || 0), 0);
   const cartTotal = Object.values(cart).reduce((s, i) => s + i.price * (i.qty || 0), 0);
-  const currentBranch = BRANCHES.find((b) => b.id === branchId);
+  const currentBranch = branches.find((b) => b.id === branchId);
   const branchLabel = currentBranch ? (isAr ? currentBranch.nameAr : currentBranch.nameEn) : null;
 
   // scroll-reactive header + progress bar
@@ -216,7 +236,7 @@ export default function App() {
   const headerShadow = useTransform(scrollY, [0, 60], ['0 0 0 rgba(0,0,0,0)', '0 12px 30px rgba(180,60,0,0.14)']);
   const headerBlur = useTransform(scrollY, [0, 60], ['saturate(1) blur(6px)', 'saturate(1.2) blur(16px)']);
 
-  if (splash) {
+  if (splash || !authReady) {
     return (
       <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
         <AnimatePresence>{splash && <Splash onDone={() => setSplash(false)} />}</AnimatePresence>
@@ -233,25 +253,7 @@ export default function App() {
   }
 
   if (!branchId) {
-    return <BranchSelectStep isAr={isAr} onSelect={(id) => setBranchId(id)} />;
-  }
-
-  if (view === 'admin') {
-    return (
-      <AdminPanel
-        menu={menu}
-        isOpen={!restaurantClosed}
-        onToggleOpen={(open) => {
-          setRestaurantClosed(!open);
-          FB.saveSettings({ isOpen: open });
-        }}
-        onSave={(m) => {
-          setMenu(m);
-          FB.saveMenu(m);
-        }}
-        onExit={() => setView('app')}
-      />
-    );
+    return <BranchSelectStep isAr={isAr} onSelect={(id) => setBranchId(id)} branches={branches} />;
   }
 
   return (
@@ -326,7 +328,7 @@ export default function App() {
       <AnimatePresence mode="wait">
         <motion.div key={tab} variants={pageVariants} initial="initial" animate="animate" exit="exit">
           {tab === 'menu' && (
-            <MenuStep menu={menu} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
+            <MenuStep menu={menuForBranch} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
           )}
           {tab === 'rewards' && <RewardsScreen loyalty={loyalty} streak={streak} isAr={isAr} onRedeem={onRedeem} />}
           {tab === 'orders' && (
@@ -339,11 +341,8 @@ export default function App() {
               streak={streak}
               isAr={isAr}
               onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
-              onAdmin={() => setShowAdminLogin(true)}
-              onLogout={() => {
-                try {
-                  localStorage.removeItem('ba_user');
-                } catch {}
+              onLogout={async () => {
+                await FB.signOut();
                 setUser(null);
                 setCart({});
                 setTab('menu');
@@ -400,17 +399,14 @@ export default function App() {
             branchName={branchLabel}
             onNavigate={setTab}
             onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
-            onAdmin={() => setShowAdminLogin(true)}
             onChangeBranch={() => {
               try {
                 localStorage.removeItem('ba_branch');
               } catch {}
               setBranchId(null);
             }}
-            onLogout={() => {
-              try {
-                localStorage.removeItem('ba_user');
-              } catch {}
+            onLogout={async () => {
+              await FB.signOut();
               setUser(null);
               setCart({});
               setTab('menu');
@@ -435,6 +431,7 @@ export default function App() {
               user={user}
               isAr={isAr}
               defaultBranchId={branchId}
+              branches={branches}
               onBack={() => setCheckoutOpen(false)}
               onOrderPlaced={onOrderPlaced}
             />
@@ -477,18 +474,6 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showAdminLogin && (
-          <AdminLogin
-            onLogin={() => {
-              setShowAdminLogin(false);
-              setView('admin');
-            }}
-            onCancel={() => setShowAdminLogin(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {streakTick && <StreakModal tick={streakTick} isAr={isAr} onClose={() => setStreakTick(null)} />}
       </AnimatePresence>
 
@@ -496,5 +481,13 @@ export default function App() {
         v{APP_VERSION}
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
   );
 }

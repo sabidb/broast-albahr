@@ -1,6 +1,18 @@
-// Firebase integration, ported from the legacy app. All calls are guarded so
-// the UI works offline / without Firestore access.
+// Firebase integration. All Firestore calls are guarded so the UI works
+// offline / without Firestore access. Phase 2 also handles Firebase Auth (phone)
+// and App Check (reCAPTCHA v3).
 import { initializeApp, type FirebaseApp } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithPhoneNumber,
+  signOut as fbSignOut,
+  RecaptchaVerifier,
+  type Auth,
+  type ConfirmationResult,
+  type User as FbUser,
+} from 'firebase/auth';
 import {
   getFirestore,
   doc,
@@ -11,6 +23,7 @@ import {
   onSnapshot,
   getDocs,
   updateDoc,
+  writeBatch,
   serverTimestamp,
   increment,
   runTransaction,
@@ -23,7 +36,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
-import type { Menu } from './data';
+import type { Branch, Menu } from './data';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyB2PqybuRwuBjDQHgl1r9iFOC5b5lr81-s',
@@ -34,16 +47,36 @@ const firebaseConfig = {
   appId: '1:663849043584:web:b15e0a32eb9b6353830865',
 };
 
+// App Check site key. Public by design (ends up in the JS bundle). Overridable
+// per environment via `PUBLIC_APP_CHECK_SITE_KEY` in Vercel.
+const APP_CHECK_SITE_KEY =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.PUBLIC_APP_CHECK_SITE_KEY) ||
+  '6Le9EX0tAAAAABxsStKat6oX8bqJ_ny1Pbrj93kQ';
+
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
+let auth: Auth | null = null;
 try {
   app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   storage = getStorage(app);
+  auth = getAuth(app);
+  // App Check runs in the browser only; skip during SSR / tests.
+  if (typeof window !== 'undefined') {
+    try {
+      initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } catch {
+      // App Check may not yet be enabled in the Firebase console; fail open.
+    }
+  }
 } catch {
   db = null;
   storage = null;
+  auth = null;
 }
 
 type Unsub = () => void;
@@ -56,8 +89,70 @@ export interface SavedAddress {
   locationLink?: string;
 }
 
+/** Normalise a Saudi phone (`05XXXXXXXX` or `+9665XXXXXXXX`) to E.164 for Firebase Auth. */
+export function toE164(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('966')) return '+' + digits;
+  if (digits.startsWith('05')) return '+966' + digits.slice(1);
+  if (digits.startsWith('5') && digits.length === 9) return '+966' + digits;
+  return phone.startsWith('+') ? phone : '+' + digits;
+}
+
+/** Convert an E.164 Saudi phone back to the legacy `05...` id used as Firestore doc key. */
+export function fromE164(e164: string): string {
+  const digits = e164.replace(/\D/g, '');
+  if (digits.startsWith('966')) return '0' + digits.slice(3);
+  return e164;
+}
+
+export interface AuthUser {
+  uid: string;
+  phone: string; // legacy local format (`05...`) — used as customers/{phone} key
+  e164: string; // canonical E.164 — matches request.auth.token.phone_number
+}
+
+function shape(u: FbUser | null): AuthUser | null {
+  if (!u || !u.phoneNumber) return null;
+  return { uid: u.uid, phone: fromE164(u.phoneNumber), e164: u.phoneNumber };
+}
+
 export const FB = {
   ready: () => !!db,
+  authReady: () => !!auth,
+
+  /** Subscribe to Firebase Auth state changes. Cb receives the shaped user or null. */
+  onAuth(cb: (u: AuthUser | null) => void): Unsub {
+    if (!auth) {
+      cb(null);
+      return noop;
+    }
+    return onAuthStateChanged(auth, (u) => cb(shape(u)));
+  },
+
+  async signOut() {
+    if (!auth) return;
+    try {
+      await fbSignOut(auth);
+    } catch {}
+  },
+
+  /**
+   * Kick off phone-number sign-in. Returns a `ConfirmationResult` — call
+   * `.confirm(code)` with the SMS code, which returns a `UserCredential`.
+   * `containerId` must reference a div in the DOM for the invisible reCAPTCHA.
+   */
+  async startPhoneSignIn(phone: string, containerId: string): Promise<ConfirmationResult> {
+    if (!auth) throw new Error('auth-unavailable');
+    // The verifier can only be constructed once per DOM node; recycle it on retry.
+    const w = window as unknown as { __baVerifier?: RecaptchaVerifier };
+    if (w.__baVerifier) {
+      try { w.__baVerifier.clear(); } catch {}
+      w.__baVerifier = undefined;
+    }
+    const verifier = new RecaptchaVerifier(auth, containerId, { size: 'invisible' });
+    w.__baVerifier = verifier;
+    return signInWithPhoneNumber(auth, toE164(phone), verifier);
+  },
 
   async getMenu(): Promise<Menu | null> {
     if (!db) return null;
@@ -140,16 +235,28 @@ export const FB = {
     return String(nxt).padStart(6, '0');
   },
 
-  /** Save a new order. Returns { fbId, orderNo }. Status starts as 'pending'. */
+  /**
+   * Save a new order. Returns { fbId, orderNo }. Idempotent on `clientOrderId`:
+   * a retry with the same key returns the original doc instead of double-writing.
+   */
   async saveOrder(o: Record<string, unknown>): Promise<{ fbId: string | null; orderNo: string }> {
     const orderNo = (o.orderNo as string) || (await FB.nextOrderNo());
     if (!db) return { fbId: null, orderNo };
+    const clientOrderId = o.clientOrderId as string | undefined;
     try {
+      if (clientOrderId) {
+        const existing = await getDocs(query(collection(db, 'orders'), where('clientOrderId', '==', clientOrderId), limit(1)));
+        if (!existing.empty) {
+          const d = existing.docs[0];
+          return { fbId: d.id, orderNo: (d.data().orderNo as string) || orderNo };
+        }
+      }
       const ref = await addDoc(collection(db, 'orders'), {
         ...o,
         orderNo,
         createdAt: serverTimestamp(),
         status: 'new',
+        statusHistory: [{ status: 'new', at: new Date().toISOString() }],
       });
       return { fbId: ref.id, orderNo };
     } catch {
@@ -163,7 +270,6 @@ export const FB = {
     loyaltyPoints?: number;
     firstSeen?: string;
     lastAddress?: string;
-    locationLink?: string;
   }) {
     if (!db) return;
     try {
@@ -230,11 +336,14 @@ export const FB = {
     }
   },
 
-  /** Live stream of orders (newest first) for the admin panel. */
-  onOrdersChange(cb: (orders: any[]) => void): Unsub {
+  /** Live stream of orders (newest first). Pass `branchId` to scope the stream to one branch (Phase 4 will require this). */
+  onOrdersChange(cb: (orders: any[]) => void, branchId?: string | null): Unsub {
     if (!db) return noop;
     try {
-      return onSnapshot(collection(db, 'orders'), (s) => {
+      const ref = branchId
+        ? query(collection(db, 'orders'), where('branch', '==', branchId))
+        : collection(db, 'orders');
+      return onSnapshot(ref, (s) => {
         const o = s.docs.map((d) => ({ fbId: d.id, ...d.data() }));
         o.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         cb(o);
@@ -259,7 +368,11 @@ export const FB = {
   async updateOrderStatus(fbId: string, status: string) {
     if (!db) return;
     try {
-      await updateDoc(doc(db, 'orders', fbId), { status, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'orders', fbId), {
+        status,
+        updatedAt: serverTimestamp(),
+        statusHistory: arrayUnion({ status, at: new Date().toISOString() }),
+      });
     } catch {}
   },
 
@@ -318,13 +431,35 @@ export const FB = {
   async markAllNotificationsRead(phone: string) {
     if (!db) return;
     try {
-      const snap = await getDocs(collection(db, 'notifications', phone, 'items'));
-      await Promise.all(
-        snap.docs
-          .filter((d) => !d.data().read)
-          .map((d) => updateDoc(d.ref, { read: true })),
-      );
+      const q1 = query(collection(db, 'notifications', phone, 'items'), where('read', '==', false));
+      const snap = await getDocs(q1);
+      if (snap.empty) return;
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+      await batch.commit();
     } catch {}
+  },
+
+  /** Live subscription to the `branches` collection (Phase 4 replaces the hardcoded list). */
+  onBranchesChange(cb: (branches: Branch[]) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(collection(db, 'branches'), (s) => {
+        cb(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Branch, 'id'>) })));
+      });
+    } catch {
+      return noop;
+    }
+  },
+
+  async getBranches(): Promise<Branch[]> {
+    if (!db) return [];
+    try {
+      const snap = await getDocs(collection(db, 'branches'));
+      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Branch, 'id'>) }));
+    } catch {
+      return [];
+    }
   },
 
   /** Live customer-facing announcement banner. */

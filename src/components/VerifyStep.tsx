@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import type { ConfirmationResult } from 'firebase/auth';
 import Field from './Field';
 import { LOGO_SRC } from '../lib/logo';
-import { generateOTP } from '../lib/utils';
 import { FB } from '../lib/fb';
 
 interface Props {
@@ -10,18 +10,19 @@ interface Props {
   isAr: boolean;
 }
 
+type Phase = 'form' | 'otp';
+
 export default function VerifyStep({ onVerified, isAr }: Props) {
-  const [phase, setPhase] = useState<'form' | 'otp'>('form');
+  const [phase, setPhase] = useState<Phase>('form');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState('');
   const [nameErr, setNameErr] = useState('');
   const [phoneErr, setPhoneErr] = useState('');
   const [loading, setLoading] = useState(false);
-  const [demoCode, setDemoCode] = useState('');
-  const otpRef = useRef('');
+  const [countdown, setCountdown] = useState(0);
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
   const refs = Array.from({ length: 6 }, () => useRef<HTMLInputElement>(null));
   const timerRef = useRef<ReturnType<typeof setInterval>>();
 
@@ -38,24 +39,37 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
     }, 1000);
   };
 
-  const sendOtp = () => {
-    let ok = true;
+  const humanErr = (code: string): string => {
+    if (code.includes('invalid-phone-number')) return isAr ? 'رقم غير صالح' : 'Invalid phone number';
+    if (code.includes('too-many-requests')) return isAr ? 'محاولات كثيرة، حاول لاحقاً' : 'Too many attempts, try later';
+    if (code.includes('quota-exceeded')) return isAr ? 'حصة الرسائل اليومية انتهت' : 'Daily SMS quota reached';
+    if (code.includes('invalid-verification-code')) return isAr ? 'رمز التحقق غير صحيح' : 'Incorrect code';
+    if (code.includes('code-expired')) return isAr ? 'انتهت صلاحية الرمز' : 'Code expired — resend';
+    if (code.includes('captcha-check-failed')) return isAr ? 'فشل التحقق من الأمان' : 'Security check failed';
+    return isAr ? 'حدث خطأ، حاول مجدداً' : 'Something went wrong — try again';
+  };
+
+  const sendOtp = async () => {
     if (!name.trim()) {
       setNameErr(isAr ? 'الاسم مطلوب' : 'Name is required');
-      ok = false;
+      return;
     }
     if (!/^05\d{8}$/.test(phone.trim())) {
       setPhoneErr(isAr ? 'أدخل رقماً سعودياً صحيحاً' : 'Enter a valid Saudi number');
-      ok = false;
+      return;
     }
-    if (!ok) return;
     setLoading(true);
-    const code = generateOTP();
-    otpRef.current = code;
-    setDemoCode(code);
-    setPhase('otp');
-    startCountdown();
-    setLoading(false);
+    setError('');
+    try {
+      const conf = await FB.startPhoneSignIn(phone.trim(), 'recaptcha-container');
+      confirmationRef.current = conf;
+      setPhase('otp');
+      startCountdown();
+    } catch (e: any) {
+      setError(humanErr(String(e?.code || e?.message || '')));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleOtp = (i: number, val: string) => {
@@ -67,23 +81,51 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
     if (!val && i > 0) refs[i - 1].current?.focus();
   };
 
-  const verify = () => {
+  const verify = async () => {
     const entered = otp.join('');
     if (entered.length < 6) return;
-    if (entered === otpRef.current) {
-      const u = { name: name.trim(), phone: phone.trim() };
-      FB.saveCustomer({ ...u, firstSeen: new Date().toISOString() });
-      onVerified(u);
-    } else {
-      setError(isAr ? 'رمز التحقق غير صحيح' : 'Incorrect OTP code');
+    if (!confirmationRef.current) {
+      setError(isAr ? 'ابدأ من جديد' : 'Please restart');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await confirmationRef.current.confirm(entered);
+      // Auth state change now fires in App.tsx via onAuth. Persist name + first-seen for this phone.
+      const cleanName = name.trim();
+      const cleanPhone = phone.trim();
+      FB.saveCustomer({ name: cleanName, phone: cleanPhone, firstSeen: new Date().toISOString() });
+      onVerified({ name: cleanName, phone: cleanPhone });
+    } catch (e: any) {
+      setError(humanErr(String(e?.code || e?.message || '')));
       setOtp(['', '', '', '', '', '']);
       refs[0].current?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resend = async () => {
+    setOtp(['', '', '', '', '', '']);
+    setError('');
+    setLoading(true);
+    try {
+      const conf = await FB.startPhoneSignIn(phone.trim(), 'recaptcha-container');
+      confirmationRef.current = conf;
+      startCountdown();
+    } catch (e: any) {
+      setError(humanErr(String(e?.code || e?.message || '')));
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[460px] flex-col justify-center px-6 py-10">
-      {/* brand */}
+      {/* Invisible reCAPTCHA container — required by Firebase phone auth. */}
+      <div id="recaptcha-container" />
+
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="mb-8 text-center">
         <div style={{ perspective: 800 }} className="mx-auto mb-4 w-fit">
           <motion.img
@@ -111,8 +153,8 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
               ? 'سجّل دخولك لتبدأ الطلب وتجمع النقاط 🎁'
               : 'Sign in to start ordering & earning points 🎁'
             : isAr
-              ? `تم إرسال الرمز إلى ${phone}`
-              : `Code sent to ${phone}`}
+              ? `أرسلنا رمزاً إلى ${phone}`
+              : `We sent a code to ${phone}`}
         </p>
       </motion.div>
 
@@ -143,26 +185,19 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
             placeholder="05XXXXXXXX"
             error={phoneErr}
           />
+          {error && <div className="text-[13px] font-black text-brand-red">❌ {error}</div>}
           <motion.button
             whileTap={{ scale: 0.97 }}
             whileHover={{ y: -2 }}
             onClick={sendOtp}
             disabled={loading}
-            className="sheen mt-2 rounded-2xl bg-brand-red py-4 text-base font-black text-white shadow-red"
+            className="sheen mt-2 rounded-2xl bg-brand-red py-4 text-base font-black text-white shadow-red disabled:opacity-60"
           >
-            {loading ? (isAr ? '...' : '...') : isAr ? 'إرسال رمز التحقق →' : 'Send OTP →'}
+            {loading ? (isAr ? 'جاري الإرسال...' : 'Sending...') : isAr ? 'إرسال رمز التحقق →' : 'Send OTP →'}
           </motion.button>
         </motion.div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-5">
-          {demoCode && (
-            <div className="w-full rounded-2xl border-2 border-dashed border-brand-red/40 bg-brand-red/5 px-5 py-3 text-center">
-              <div className="text-[11px] font-black uppercase tracking-wide text-brand-muted">
-                {isAr ? 'رمزك (تجريبي)' : 'Your code (demo)'}
-              </div>
-              <div className="text-[26px] font-black tracking-[8px] text-brand-red">{demoCode}</div>
-            </div>
-          )}
           <div className="flex gap-2.5" dir="ltr">
             {otp.map((d, i) => (
               <input
@@ -184,25 +219,16 @@ export default function VerifyStep({ onVerified, isAr }: Props) {
             whileTap={{ scale: 0.97 }}
             whileHover={{ y: -2 }}
             onClick={verify}
-            disabled={otp.join('').length < 6}
+            disabled={otp.join('').length < 6 || loading}
             className="sheen w-full rounded-2xl bg-brand-red py-4 text-base font-black text-white shadow-red disabled:opacity-40 disabled:shadow-none"
           >
-            {isAr ? 'تحقق الآن ✓' : 'Verify Now ✓'}
+            {loading ? (isAr ? 'جاري التحقق...' : 'Verifying...') : isAr ? 'تحقق الآن ✓' : 'Verify Now ✓'}
           </motion.button>
           <div className="text-[13px] font-bold text-brand-muted">
             {countdown > 0 ? (
               <span>{isAr ? `إعادة إرسال بعد ${countdown}ث` : `Resend in ${countdown}s`}</span>
             ) : (
-              <button
-                onClick={() => {
-                  setOtp(['', '', '', '', '', '']);
-                  const code = generateOTP();
-                  otpRef.current = code;
-                  setDemoCode(code);
-                  startCountdown();
-                }}
-                className="font-black text-brand-red"
-              >
+              <button onClick={resend} disabled={loading} className="font-black text-brand-red disabled:opacity-60">
                 {isAr ? 'إعادة إرسال الرمز' : 'Resend OTP'}
               </button>
             )}

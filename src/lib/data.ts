@@ -13,6 +13,10 @@ export interface MenuItem {
   img?: string;
   /** Optional per-item note from the customer (e.g. "no onions"). Displays everywhere. */
   note?: string;
+  /** Branches the item is sold at. ["all"] or a list of branchIds. Admin-managed. */
+  branches?: string[];
+  /** Per-branch on/off override; missing branchId key = follow `available`. Admin-managed. */
+  availability?: Record<string, boolean>;
 }
 export type Menu = Record<string, MenuItem[]>;
 export interface Branch {
@@ -20,18 +24,15 @@ export interface Branch {
 }
 export interface Coupon { discount: number; type: 'percent' | 'fixed'; label: string; }
 
-export const ADMIN_PASSWORD = 'albahr2024';
 export const WHATSAPP_NUMBER = '966500959394';
 export const VAT_RATE = 0.15;
 
+// Fallback list — used only when the live `branches` Firestore collection is empty.
+// Once the admin panel adds branches in Phase 4 this list becomes dead code.
 export const BRANCHES: Branch[] = [
   { id: 'kakkiyah', nameEn: 'Broast Al Bahr (Kakkiyah)', nameAr: 'بروست البحر (فرع الكعكية)', whatsapp: '966500959394', lat: 21.3765717, lng: 39.8037236 },
   { id: 'subhani', nameEn: 'Broast Al Bahr (Subhani)', nameAr: 'بروست البحر (فرع السبهاني)', whatsapp: '966508379339', lat: 21.3525607, lng: 39.7843825 },
   { id: 'waliy', nameEn: 'Broast Al Bahr (Waliy Al Ahd)', nameAr: 'بروست البحر (فرع ولي العهد)', whatsapp: '966550061771', lat: 21.3395794, lng: 39.6925430 },
-];
-
-export const DELIVERY_ZONES = [
-  { maxKm: 3, fee: 10 }, { maxKm: 5, fee: 15 }, { maxKm: 7, fee: 20 },
 ];
 
 export const VALID_COUPONS: Record<string, Coupon> = {

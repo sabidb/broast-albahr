@@ -1,4 +1,30 @@
-import type { MenuItem } from './data';
+import type { Menu, MenuItem } from './data';
+
+/**
+ * Return a copy of the menu limited to items sold at `branchId`, respecting the
+ * admin-managed `branches` list and per-branch `availability` override.
+ * When `branchId` is null the menu is returned unchanged.
+ */
+export function filterMenuForBranch(menu: Menu, branchId: string | null): Menu {
+  if (!branchId) return menu;
+  const out: Menu = {};
+  for (const [cat, items] of Object.entries(menu)) {
+    const filtered = items
+      .filter((i) => {
+        if (!i.branches || i.branches.length === 0) return true;
+        return i.branches.includes('all') || i.branches.includes(branchId);
+      })
+      .map((i) => {
+        const perBranchOn = i.availability && Object.prototype.hasOwnProperty.call(i.availability, branchId)
+          ? !!i.availability[branchId]
+          : i.available;
+        return perBranchOn === i.available ? i : { ...i, available: perBranchOn };
+      });
+    if (filtered.length) out[cat] = filtered;
+  }
+  return out;
+}
+
 
 export type FoodKind =
   | 'chicken'

@@ -12,7 +12,6 @@ export default function NavDrawer({
   branchName,
   onNavigate,
   onToggleLang,
-  onAdmin,
   onLogout,
   onChangeBranch,
   onClose,
@@ -25,7 +24,6 @@ export default function NavDrawer({
   branchName?: string | null;
   onNavigate: (t: Tab) => void;
   onToggleLang: () => void;
-  onAdmin: () => void;
   onLogout: () => void;
   onChangeBranch: () => void;
   onClose: () => void;
@@ -52,7 +50,6 @@ export default function NavDrawer({
       danger: false,
     },
     { icon: '🌐', label: isAr ? 'English' : 'عربي', onClick: onToggleLang, danger: false },
-    { icon: '⚙️', label: isAr ? 'لوحة الإدارة' : 'Admin panel', onClick: onAdmin, danger: false },
     { icon: '🚪', label: isAr ? 'تسجيل الخروج' : 'Log out', onClick: onLogout, danger: true },
   ];
 

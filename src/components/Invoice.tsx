@@ -34,12 +34,12 @@ export interface Order {
   date: string;
   user: { name: string; phone: string };
   branchObj: { nameEn: string; nameAr?: string };
-  orderType: 'pickup' | 'delivery';
+  orderType?: 'pickup' | 'delivery';
   pickupTime: string;
   paymentMethod: string;
   couponCode: string;
   items: MenuItem[];
-  totals: { subtotal: number; pFee: number; dFee: number; discount: number; vat: number; total: number };
+  totals: { subtotal: number; pFee: number; discount: number; vat: number; total: number; dFee?: number };
   fbId?: string | null;
   status?: string;
   rating?: { stars: number; comment: string } | null;
@@ -72,12 +72,11 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       <hr class="divider"/>
       <div class="row"><span>Customer:</span><span><b>${order.user.name}</b></span></div>
       <div class="row"><span>Mobile:</span><span>${order.user.phone}</span></div>
-      <div class="row"><span>Type:</span><span>${order.orderType === 'pickup' ? 'Pickup' : 'Delivery'}</span></div>
+      <div class="row"><span>Type:</span><span>Pickup</span></div>
       <div class="row"><span>Payment:</span><span>${order.paymentMethod}</span></div>
       <hr class="divider"/>${rows}<hr class="divider"/>
       <div class="row"><span>Subtotal:</span><span>${money(t.subtotal)}</span></div>
       <div class="row"><span>Platform Fee:</span><span>${money(t.pFee)}</span></div>
-      ${t.dFee ? `<div class="row"><span>Delivery:</span><span>${money(t.dFee)}</span></div>` : ''}
       ${t.discount ? `<div class="row" style="color:green"><span>Discount (${order.couponCode}):</span><span>- ${money(t.discount)}</span></div>` : ''}
       <div class="row total"><span>TOTAL:</span><span>${money(t.total)}</span></div>
       <div class="footer"><p style="font-size:10px;color:#999">Prices include 15% VAT (${money(t.vat)})</p><p>شكراً لزيارتكم · Thank you!</p><p>VAT Reg. No: 311459656500003</p></div>
@@ -115,7 +114,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
             [
               ['👤 Customer', order.user.name],
               ['📱 Mobile', order.user.phone],
-              ['🏷️ Type', order.orderType === 'pickup' ? 'Pickup' : 'Delivery'],
+              ['🏷️ Type', 'Pickup'],
               ['💳 Payment', order.paymentMethod],
             ] as [string, string][]
           ).map(([l, v]) => (
@@ -144,7 +143,6 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
           <div className="border-t border-dashed border-gray-200 pt-3 text-[13px]">
             <Row l="Subtotal" v={money(t.subtotal)} />
             <Row l="Platform Fee" v={money(t.pFee)} />
-            {!!t.dFee && <Row l="Delivery" v={money(t.dFee)} />}
             {!!t.discount && <Row l={`Discount (${order.couponCode})`} v={'- ' + money(t.discount)} green />}
             <div className="mb-1 text-[10px] text-gray-400">
               {isAr ? `الأسعار شاملة ضريبة القيمة المضافة 15% (${money(t.vat)})` : `Prices include 15% VAT (${money(t.vat)})`}

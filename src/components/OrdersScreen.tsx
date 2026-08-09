@@ -91,7 +91,7 @@ export default function OrdersScreen({
                 <div className="mt-3 flex items-center justify-between border-t border-brand-line pt-3">
                   <div className="flex items-center gap-2">
                     <span className="text-[12px] font-bold text-brand-muted">
-                      {o.orderType === 'pickup' ? (isAr ? '🏃 استلام' : '🏃 Pickup') : isAr ? '🛵 توصيل' : '🛵 Delivery'}
+                      {isAr ? '🏃 استلام' : '🏃 Pickup'}
                     </span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-black ${
