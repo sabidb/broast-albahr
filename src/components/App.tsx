@@ -34,7 +34,7 @@ import {
 } from '../lib/loyalty';
 import type { Order } from './Invoice';
 
-type User = { name: string; phone: string };
+type User = { uid: string; name: string; phone: string };
 
 function AppInner() {
   const [splash, setSplash] = useState(true);
@@ -67,17 +67,20 @@ function AppInner() {
     setStreak(t.state);
     if (t.changed) setStreakTick(t);
     setLoyalty(loadLoyalty());
-    // Subscribe to Firebase Auth so a returning customer skips VerifyStep.
+    // Subscribe to Firebase Auth. Anonymous sessions persist across reloads,
+    // so a returning visitor whose customers/{uid} doc has name+phone skips
+    // VerifyStep. A fresh visitor stays on VerifyStep until they submit.
     const unsub = FB.onAuth(async (au) => {
       setAuthReady(true);
       if (!au) {
         setUser(null);
         return;
       }
-      // Auth token gives us the verified phone; look up display name from Firestore.
-      const doc = await FB.getCustomer(au.phone);
+      const doc = await FB.getCustomer(au.uid);
       const nm = (doc?.name as string) || '';
-      setUser({ name: nm, phone: au.phone });
+      const ph = (doc?.phone as string) || '';
+      if (nm && ph) setUser({ uid: au.uid, name: nm, phone: ph });
+      else setUser(null); // profile not yet filled — force VerifyStep
     });
     return () => unsub();
   }, []);
@@ -112,10 +115,10 @@ function AppInner() {
 
   // Load persisted orders + subscribe to live updates for this user
   useEffect(() => {
-    if (!user?.phone) return;
+    if (!user?.uid) return;
     let cancelled = false;
     (async () => {
-      const rows = await FB.getCustomerOrders(user.phone);
+      const rows = await FB.getCustomerOrders(user.uid);
       if (cancelled) return;
       const shaped: Order[] = rows.map((r: any) => ({
         orderNo: r.orderNo || '000000',
@@ -134,9 +137,8 @@ function AppInner() {
       }));
       setOrders(shaped);
     })();
-    // Live subscribe to any status changes on this user's orders
-    const unsub = FB.onOrdersChange((all) => {
-      const mine = all.filter((o: any) => o.userPhone === user.phone);
+    // Live subscribe to just this customer's orders (server-filtered by uid).
+    const unsub = FB.onMyOrdersChange(user.uid, (mine) => {
       setOrders((prev) => {
         const map = new Map(prev.map((o) => [o.fbId || o.orderNo, o]));
         mine.forEach((o: any) => {
@@ -157,7 +159,7 @@ function AppInner() {
       cancelled = true;
       unsub();
     };
-  }, [user?.phone, user?.name]);
+  }, [user?.uid, user?.name]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -182,6 +184,7 @@ function AppInner() {
     setCheckoutOpen(false);
     const saved = await FB.saveOrder({
       ...payload,
+      userUid: user!.uid,
       userName: payload.user.name,
       userPhone: payload.user.phone,
       total: order.totals.total,
@@ -197,8 +200,9 @@ function AppInner() {
     // earn loyalty points
     const earned = pointsForOrder(order.totals.total, loyalty.lifetime);
     setLoyalty(addPoints(earned, `Order #${orderNo}`));
-    if (user?.phone)
+    if (user?.uid)
       FB.saveCustomer({
+        uid: user.uid,
         name: user.name,
         phone: user.phone,
         loyaltyPoints: earned,

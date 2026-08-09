@@ -14,7 +14,7 @@ export default function AccountScreen({
   onToggleLang,
   onLogout,
 }: {
-  user: { name: string; phone: string };
+  user: { uid: string; name: string; phone: string };
   loyalty: LoyaltyState;
   streak: StreakState;
   isAr: boolean;
@@ -122,7 +122,7 @@ export default function AccountScreen({
 
       <AnimatePresence>
         {addressesOpen && (
-          <AddressManager phone={user.phone} isAr={isAr} onClose={() => setAddressesOpen(false)} />
+          <AddressManager uid={user.uid} isAr={isAr} onClose={() => setAddressesOpen(false)} />
         )}
       </AnimatePresence>
     </div>

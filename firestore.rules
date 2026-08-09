@@ -14,18 +14,23 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ── helpers ──────────────────────────────────────────────────────────
+    // Auth model: customers get an anonymous Firebase Auth uid on first
+    // visit; customers/{uid} carries their name + phone as profile data.
+    // Staff (owner + branch managers) use email/password Auth; their role
+    // profile lives in users/{uid}.
+
     function signedIn() { return request.auth != null; }
 
-    function customerPhone() {
-      // Firebase phone auth stores E.164 like "+9665XXXXXXXX"; app stores keys
-      // in the legacy "05XXXXXXXX" form. Normalise via string slicing.
-      return signedIn() && request.auth.token.phone_number != null
-        ? '0' + request.auth.token.phone_number[4:]
-        : '';
+    function ownsCustomer(uid) {
+      return signedIn() && request.auth.uid == uid;
     }
 
-    function ownsCustomer(phone) {
-      return signedIn() && customerPhone() == phone;
+    // Notifications are still keyed by phone (admin knows the phone from
+    // the order). Verify the caller's customer profile carries that phone.
+    function callerPhoneIs(phone) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/customers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/customers/$(request.auth.uid)).data.get('phone', '') == phone;
     }
 
     function isStaff() {
@@ -71,24 +76,24 @@ service cloud.firestore {
       allow update: if isBranchStaff(branchId);
     }
 
-    // Customer profiles keyed by legacy phone. Owning customer OR any staff
-    // may read/write. Cross-customer read denied.
-    match /customers/{phone} {
-      allow read, write: if ownsCustomer(phone) || isStaff();
+    // Customer profiles keyed by Firebase Auth uid (anonymous). Owning
+    // customer OR any staff may read/write. Cross-customer read denied.
+    match /customers/{uid} {
+      allow read, write: if ownsCustomer(uid) || isStaff();
     }
 
-    // Orders: customers create their own (server-side pricing lands in Phase 6);
+    // Orders: customers create their own (userUid must match caller);
     // customers read only their own; staff read/write scoped by branch.
     match /orders/{orderId} {
       allow create: if signedIn()
-        && request.resource.data.userPhone == customerPhone()
+        && request.resource.data.userUid == request.auth.uid
         && request.resource.data.branch is string;
-      allow read: if (signedIn() && resource.data.userPhone == customerPhone())
+      allow read: if (signedIn() && resource.data.get('userUid', '') == request.auth.uid)
         || isBranchStaff(resource.data.branch);
       // Rating: the owning customer may attach a rating; everything else is staff-only.
       allow update: if isBranchStaff(resource.data.branch)
         || (signedIn()
-            && resource.data.userPhone == customerPhone()
+            && resource.data.get('userUid', '') == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating']));
       allow delete: if isOwner();
     }
@@ -108,10 +113,11 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
-    // Customer inbox notifications — owning customer reads/marks-read;
-    // any staff writes messages.
+    // Customer inbox notifications — still keyed by phone (admin sends
+    // by phone from an order). Verify the caller's customer profile
+    // carries that phone.
     match /notifications/{phone}/items/{itemId} {
-      allow read, update: if ownsCustomer(phone);
+      allow read, update: if callerPhoneIs(phone) || isStaff();
       allow create: if isStaff();
       allow delete: if isOwner();
     }

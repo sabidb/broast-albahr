@@ -3,12 +3,12 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { FB, type SavedAddress } from '../lib/fb';
 
 interface Props {
-  phone: string;
+  uid: string;
   isAr: boolean;
   onClose: () => void;
 }
 
-export default function AddressManager({ phone, isAr, onClose }: Props) {
+export default function AddressManager({ uid, isAr, onClose }: Props) {
   const [items, setItems] = useState<SavedAddress[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -20,7 +20,7 @@ export default function AddressManager({ phone, isAr, onClose }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const c = await FB.getCustomer(phone);
+      const c = await FB.getCustomer(uid);
       if (cancelled) return;
       setItems(((c && (c.addresses as SavedAddress[])) || []).filter(Boolean));
       setLoading(false);
@@ -28,7 +28,7 @@ export default function AddressManager({ phone, isAr, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [phone]);
+  }, [uid]);
 
   const grabLocation = () => {
     if (!('geolocation' in navigator)) return;
@@ -52,7 +52,7 @@ export default function AddressManager({ phone, isAr, onClose }: Props) {
       locationLink: locLink,
     };
     setItems((prev) => [...prev, a]);
-    await FB.addCustomerAddress(phone, a);
+    await FB.addCustomerAddress(uid, a);
     setAdding(false);
     setLabel('Home');
     setLine('');
@@ -62,7 +62,7 @@ export default function AddressManager({ phone, isAr, onClose }: Props) {
 
   const remove = async (a: SavedAddress) => {
     setItems((prev) => prev.filter((x) => x.id !== a.id));
-    await FB.removeCustomerAddress(phone, a);
+    await FB.removeCustomerAddress(uid, a);
   };
 
   return (

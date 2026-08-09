@@ -6,11 +6,10 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import {
   getAuth,
   onAuthStateChanged,
-  signInWithPhoneNumber,
+  signInAnonymously,
   signOut as fbSignOut,
-  RecaptchaVerifier,
+  updateProfile,
   type Auth,
-  type ConfirmationResult,
   type User as FbUser,
 } from 'firebase/auth';
 import {
@@ -89,31 +88,13 @@ export interface SavedAddress {
   locationLink?: string;
 }
 
-/** Normalise a Saudi phone (`05XXXXXXXX` or `+9665XXXXXXXX`) to E.164 for Firebase Auth. */
-export function toE164(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('966')) return '+' + digits;
-  if (digits.startsWith('05')) return '+966' + digits.slice(1);
-  if (digits.startsWith('5') && digits.length === 9) return '+966' + digits;
-  return phone.startsWith('+') ? phone : '+' + digits;
-}
-
-/** Convert an E.164 Saudi phone back to the legacy `05...` id used as Firestore doc key. */
-export function fromE164(e164: string): string {
-  const digits = e164.replace(/\D/g, '');
-  if (digits.startsWith('966')) return '0' + digits.slice(3);
-  return e164;
-}
-
 export interface AuthUser {
   uid: string;
-  phone: string; // legacy local format (`05...`) — used as customers/{phone} key
-  e164: string; // canonical E.164 — matches request.auth.token.phone_number
 }
 
 function shape(u: FbUser | null): AuthUser | null {
-  if (!u || !u.phoneNumber) return null;
-  return { uid: u.uid, phone: fromE164(u.phoneNumber), e164: u.phoneNumber };
+  if (!u) return null;
+  return { uid: u.uid };
 }
 
 export const FB = {
@@ -137,21 +118,21 @@ export const FB = {
   },
 
   /**
-   * Kick off phone-number sign-in. Returns a `ConfirmationResult` — call
-   * `.confirm(code)` with the SMS code, which returns a `UserCredential`.
-   * `containerId` must reference a div in the DOM for the invisible reCAPTCHA.
+   * Silently create (or restore) an anonymous session. No captcha, no SMS —
+   * every visitor gets a stable Firebase UID that rules can key on.
+   * Returns the shaped AuthUser.
    */
-  async startPhoneSignIn(phone: string, containerId: string): Promise<ConfirmationResult> {
+  async signInAnon(): Promise<AuthUser | null> {
     if (!auth) throw new Error('auth-unavailable');
-    // The verifier can only be constructed once per DOM node; recycle it on retry.
-    const w = window as unknown as { __baVerifier?: RecaptchaVerifier };
-    if (w.__baVerifier) {
-      try { w.__baVerifier.clear(); } catch {}
-      w.__baVerifier = undefined;
-    }
-    const verifier = new RecaptchaVerifier(auth, containerId, { size: 'invisible' });
-    w.__baVerifier = verifier;
-    return signInWithPhoneNumber(auth, toE164(phone), verifier);
+    if (auth.currentUser) return shape(auth.currentUser);
+    const cred = await signInAnonymously(auth);
+    return shape(cred.user);
+  },
+
+  /** Set the visible display name on the current auth user. */
+  async setDisplayName(name: string) {
+    if (!auth?.currentUser) return;
+    try { await updateProfile(auth.currentUser, { displayName: name }); } catch {}
   },
 
   async getMenu(): Promise<Menu | null> {
@@ -265,6 +246,7 @@ export const FB = {
   },
 
   async saveCustomer(d: {
+    uid: string;
     name: string;
     phone: string;
     loyaltyPoints?: number;
@@ -275,53 +257,44 @@ export const FB = {
     try {
       const data: Record<string, unknown> = { ...d, lastSeen: serverTimestamp() };
       if (typeof d.loyaltyPoints === 'number') data.loyaltyPoints = increment(d.loyaltyPoints);
-      await setDoc(doc(db, 'customers', d.phone), data, { merge: true });
+      await setDoc(doc(db, 'customers', d.uid), data, { merge: true });
     } catch {}
   },
 
-  async getCustomer(phone: string): Promise<Record<string, unknown> | null> {
+  async getCustomer(uid: string): Promise<Record<string, unknown> | null> {
     if (!db) return null;
     try {
-      const s = await getDoc(doc(db, 'customers', phone));
+      const s = await getDoc(doc(db, 'customers', uid));
       return s.exists() ? (s.data() as Record<string, unknown>) : null;
     } catch {
       return null;
     }
   },
 
-  async addCustomerAddress(phone: string, a: SavedAddress) {
+  async addCustomerAddress(uid: string, a: SavedAddress) {
     if (!db) return;
     try {
-      await setDoc(doc(db, 'customers', phone), { addresses: arrayUnion(a) }, { merge: true });
+      await setDoc(doc(db, 'customers', uid), { addresses: arrayUnion(a) }, { merge: true });
     } catch {}
   },
 
-  async removeCustomerAddress(phone: string, a: SavedAddress) {
+  async removeCustomerAddress(uid: string, a: SavedAddress) {
     if (!db) return;
     try {
-      await updateDoc(doc(db, 'customers', phone), { addresses: arrayRemove(a) });
+      await updateDoc(doc(db, 'customers', uid), { addresses: arrayRemove(a) });
     } catch {}
   },
 
-  async getCustomerOrders(phone: string): Promise<Record<string, unknown>[]> {
+  async getCustomerOrders(uid: string): Promise<Record<string, unknown>[]> {
     if (!db) return [];
     try {
-      const q1 = query(collection(db, 'orders'), where('userPhone', '==', phone));
+      const q1 = query(collection(db, 'orders'), where('userUid', '==', uid));
       const snap = await getDocs(q1);
       return snap.docs
         .map((d) => ({ fbId: d.id, ...d.data() }))
         .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
     } catch {
-      // fallback: scan (older security rules)
-      try {
-        const snap = await getDocs(collection(db, 'orders'));
-        return snap.docs
-          .map((d) => ({ fbId: d.id, ...d.data() }))
-          .filter((o: any) => o.userPhone === phone)
-          .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      } catch {
-        return [];
-      }
+      return [];
     }
   },
 
@@ -344,6 +317,21 @@ export const FB = {
         ? query(collection(db, 'orders'), where('branch', '==', branchId))
         : collection(db, 'orders');
       return onSnapshot(ref, (s) => {
+        const o = s.docs.map((d) => ({ fbId: d.id, ...d.data() }));
+        o.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        cb(o);
+      });
+    } catch {
+      return noop;
+    }
+  },
+
+  /** Live stream of a specific customer's orders (newest first). Server-filtered by userUid. */
+  onMyOrdersChange(uid: string, cb: (orders: any[]) => void): Unsub {
+    if (!db) return noop;
+    try {
+      const q1 = query(collection(db, 'orders'), where('userUid', '==', uid));
+      return onSnapshot(q1, (s) => {
         const o = s.docs.map((d) => ({ fbId: d.id, ...d.data() }));
         o.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         cb(o);
