@@ -292,23 +292,33 @@ export const FB = {
   },
 
   /**
-   * All orders belonging to a customer, keyed by phone so history survives
-   * a fresh install / new device (anonymous auth mints a new uid there).
-   * Rules permit read when the order's userPhone matches the caller's own
-   * customer-doc phone.
+   * All orders belonging to a customer. Runs both a uid-scoped query (for
+   * the current anon session) and a phone-scoped query (for prior sessions
+   * on other devices) in parallel and unions the results. Either query may
+   * legitimately return empty; whichever succeeds contributes rows. Falling
+   * back to the union means one rule quirk can't wipe the whole history.
    */
-  async getCustomerOrders(phone: string): Promise<Record<string, unknown>[]> {
-    if (!db || !phone) return [];
-    try {
-      const q1 = query(collection(db, 'orders'), where('userPhone', '==', phone));
-      const snap = await getDocs(q1);
-      return snap.docs
-        .map((d) => ({ fbId: d.id, ...d.data() }))
-        .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-    } catch (err) {
-      try { console.error('[FB.getCustomerOrders] read failed', err); } catch {}
-      return [];
-    }
+  async getCustomerOrders(phone: string, uid?: string): Promise<Record<string, unknown>[]> {
+    if (!db || (!phone && !uid)) return [];
+    const rows = new Map<string, Record<string, unknown>>();
+    const results = await Promise.allSettled([
+      phone
+        ? getDocs(query(collection(db, 'orders'), where('userPhone', '==', phone)))
+        : Promise.resolve(null as any),
+      uid
+        ? getDocs(query(collection(db, 'orders'), where('userUid', '==', uid)))
+        : Promise.resolve(null as any),
+    ]);
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled' && r.value) {
+        r.value.docs.forEach((d) => rows.set(d.id, { fbId: d.id, ...d.data() }));
+      } else if (r.status === 'rejected') {
+        const which = i === 0 ? 'phone' : 'uid';
+        try { console.error(`[FB.getCustomerOrders] ${which} query failed`, r.reason); } catch {}
+      }
+    });
+    return Array.from(rows.values())
+      .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
   },
 
   onMenuChange(cb: (m: Menu) => void): Unsub {
@@ -339,20 +349,38 @@ export const FB = {
     }
   },
 
-  /** Live stream of a specific customer's orders (newest first). Server-filtered by phone so the stream spans devices. */
-  onMyOrdersChange(phone: string, cb: (orders: any[]) => void): Unsub {
-    if (!db || !phone) return noop;
-    try {
-      const q1 = query(collection(db, 'orders'), where('userPhone', '==', phone));
-      return onSnapshot(q1, (s) => {
-        const o = s.docs.map((d) => ({ fbId: d.id, ...d.data() }));
-        o.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        cb(o);
-      });
-    } catch (err) {
-      try { console.error('[FB.onMyOrdersChange] subscribe failed', err); } catch {}
-      return noop;
-    }
+  /**
+   * Live stream of a specific customer's orders. Two subscriptions in parallel
+   * (uid and phone) so we survive rule quirks and cover both same-session and
+   * cross-device history. Rows are unioned by fbId before every cb.
+   */
+  onMyOrdersChange(phone: string, uid: string | undefined, cb: (orders: any[]) => void): Unsub {
+    if (!db || (!phone && !uid)) return noop;
+    const rows = new Map<string, any>();
+    const emit = () => {
+      const arr = Array.from(rows.values());
+      arr.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      cb(arr);
+    };
+    const subs: Unsub[] = [];
+    const mkSub = (field: 'userPhone' | 'userUid', value: string) => {
+      try {
+        const u = onSnapshot(
+          query(collection(db!, 'orders'), where(field, '==', value)),
+          (s) => {
+            s.docs.forEach((d) => rows.set(d.id, { fbId: d.id, ...d.data() }));
+            emit();
+          },
+          (err) => { try { console.error(`[FB.onMyOrdersChange] ${field} stream error`, err); } catch {} },
+        );
+        subs.push(u);
+      } catch (err) {
+        try { console.error(`[FB.onMyOrdersChange] ${field} subscribe threw`, err); } catch {}
+      }
+    };
+    if (phone) mkSub('userPhone', phone);
+    if (uid) mkSub('userUid', uid);
+    return () => subs.forEach((u) => u());
   },
 
   /** Live single-order subscription for the customer tracker. */

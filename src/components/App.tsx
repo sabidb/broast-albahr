@@ -120,7 +120,7 @@ function AppInner() {
     if (!user?.phone) return;
     let cancelled = false;
     (async () => {
-      const rows = await FB.getCustomerOrders(user.phone);
+      const rows = await FB.getCustomerOrders(user.phone, user.uid);
       if (cancelled) return;
       const shaped: Order[] = rows.map((r: any) => ({
         orderNo: r.orderNo || '000000',
@@ -142,7 +142,7 @@ function AppInner() {
     // Live-subscribe to this customer's orders (server-filtered by phone).
     // Patches status/rating on ones we already have and folds in any that
     // aren't in local state yet (e.g. orders placed from another device).
-    const unsub = FB.onMyOrdersChange(user.phone, (mine) => {
+    const unsub = FB.onMyOrdersChange(user.phone, user.uid, (mine) => {
       setOrders((prev) => {
         const map = new Map(prev.map((o) => [o.fbId || o.orderNo, o]));
         mine.forEach((o: any) => {
