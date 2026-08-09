@@ -1,12 +1,19 @@
 // One-time bootstrap: grant `role: 'owner'` in Firestore to the owner UID
 // so the Phase 2 Firestore rules recognise them as admin.
 //
-// Usage (from repo root):
-//   1. Download a service-account JSON from Firebase Console →
-//      Project Settings → Service accounts → Generate new private key.
-//   2. Run:
-//        GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json \
-//        node scripts/set-owner-role.mjs
+// Two ways to authenticate:
+//
+//   A) Cloud Shell (easiest — nothing to download):
+//        Open https://shell.cloud.google.com/?project=broast-al-bahr
+//        git clone https://github.com/sabidb/broast-albahr && cd broast-albahr
+//        npm install
+//        gcloud auth application-default login   # only if not already set
+//        npm run bootstrap:owner
+//
+//   B) Local with a service-account JSON:
+//        Download from Firebase Console → Project settings → Service accounts.
+//        GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json \
+//          npm run bootstrap:owner
 //
 // Idempotent — safe to run twice.
 
@@ -19,17 +26,27 @@ const OWNER_UID = 'kNrKfoWI83VAICymBRXPa9TYKDj1';
 const PROJECT_ID = 'broast-al-bahr';
 
 const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-if (!credsPath) {
-  console.error('Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json');
-  process.exit(1);
+if (credsPath) {
+  if (!fs.existsSync(credsPath)) {
+    console.error(`No service-account file at ${credsPath}`);
+    process.exit(1);
+  }
+  const serviceAccount = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+  initializeApp({ credential: cert(serviceAccount), projectId: PROJECT_ID });
+  console.log(`Using service-account key from ${credsPath}`);
+} else {
+  // Cloud Shell + `gcloud auth application-default login` on a laptop both
+  // populate application-default credentials automatically.
+  try {
+    initializeApp({ credential: applicationDefault(), projectId: PROJECT_ID });
+    console.log('Using Application Default Credentials.');
+  } catch (e) {
+    console.error('No credentials found. Either set GOOGLE_APPLICATION_CREDENTIALS');
+    console.error('or run `gcloud auth application-default login` first.');
+    console.error(e?.message || e);
+    process.exit(1);
+  }
 }
-if (!fs.existsSync(credsPath)) {
-  console.error(`No service-account file at ${credsPath}`);
-  process.exit(1);
-}
-const serviceAccount = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-
-initializeApp({ credential: cert(serviceAccount), projectId: PROJECT_ID });
 
 const db = getFirestore();
 const auth = getAuth();
