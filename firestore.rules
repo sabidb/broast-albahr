@@ -33,6 +33,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Admin staff role profiles (read by any signed-in admin, written by owner).
+    match /users/{uid} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
