@@ -230,6 +230,11 @@ function AppInner() {
       // patch the local copies with the Firestore id so we can subscribe/track live.
       setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, fbId: saved.fbId } : o)));
       setLastOrder((cur) => (cur && cur.orderNo === orderNo ? { ...cur, fbId: saved.fbId } : cur));
+    } else if (saved.error) {
+      // Surface the real Firestore/schema error so a silent regression
+      // like "rules deployed, orders no longer land" is visible to the user
+      // (and the person debugging over their shoulder) without DevTools.
+      showToast(isAr ? `⚠️ لم يُحفظ الطلب: ${saved.error}` : `⚠️ Order not saved: ${saved.error}`);
     }
     // earn loyalty points
     const earned = pointsForOrder(order.totals.total, loyalty.lifetime);

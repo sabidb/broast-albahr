@@ -221,9 +221,9 @@ export const FB = {
    * Save a new order. Returns { fbId, orderNo }. Idempotent on `clientOrderId`:
    * a retry with the same key returns the original doc instead of double-writing.
    */
-  async saveOrder(o: Record<string, unknown>): Promise<{ fbId: string | null; orderNo: string }> {
+  async saveOrder(o: Record<string, unknown>): Promise<{ fbId: string | null; orderNo: string; error?: string }> {
     const orderNo = (o.orderNo as string) || (await FB.nextOrderNo());
-    if (!db) return { fbId: null, orderNo };
+    if (!db) return { fbId: null, orderNo, error: 'no-db' };
     const clientOrderId = o.clientOrderId as string | undefined;
     // Validate BEFORE stamping createdAt so a rejected payload never mints
     // a phantom orderNo write. Throws SchemaError with a clear field path.
@@ -233,7 +233,7 @@ export const FB = {
     } catch (err) {
       const msg = err instanceof SchemaError ? err.message : String(err);
       try { console.error('[FB.saveOrder] rejected by schema:', msg); } catch {}
-      return { fbId: null, orderNo };
+      return { fbId: null, orderNo, error: msg };
     }
     const payload = {
       ...validated,
@@ -241,11 +241,10 @@ export const FB = {
       statusHistory: [{ status: 'new', at: new Date().toISOString() }],
     };
     try {
-      // Use the clientOrderId as the Firestore doc id. setDoc against a
-      // fixed id is inherently idempotent — a retry writes to the same
-      // path with the same payload. No preflight getDoc (a getDoc on a
-      // nonexistent doc can trip strict read rules that inspect
-      // resource.data, and we don't need one anyway).
+      // setDoc against a fixed client-chosen id is inherently idempotent — a
+      // retry writes to the same path with the same payload. No preflight
+      // getDoc (a getDoc on a nonexistent doc can trip strict read rules
+      // that inspect resource.data, and we don't need one anyway).
       if (clientOrderId) {
         const ref = doc(db, 'orders', clientOrderId);
         await setDoc(ref, payload);
@@ -253,10 +252,14 @@ export const FB = {
       }
       const ref = await addDoc(collection(db, 'orders'), payload);
       return { fbId: ref.id, orderNo };
-    } catch (err) {
-      // Surface to the console so a denied write is diagnosable during testing.
-      try { console.error('[FB.saveOrder] write failed', err); } catch {}
-      return { fbId: null, orderNo };
+    } catch (err: any) {
+      // Bubble Firestore's real error code (e.g. "permission-denied") back to
+      // the caller so the UI can surface it as a toast — silent failures
+      // are what let today's regression sit unnoticed.
+      const code = err?.code || err?.name || 'unknown';
+      const msg = err?.message || String(err);
+      try { console.error('[FB.saveOrder] write failed:', code, msg, err); } catch {}
+      return { fbId: null, orderNo, error: `${code}: ${msg}` };
     }
   },
 

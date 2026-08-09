@@ -110,10 +110,10 @@ service cloud.firestore {
         && request.resource.data.branch is string
         && request.resource.data.branch.size() > 0
         && request.resource.data.userPhone is string
-        && request.resource.data.userPhone.matches('^05\\d{8}$')
+        && request.resource.data.userPhone.matches('^05[0-9]{8}$')
         && request.resource.data.userName is string
         && request.resource.data.orderNo is string
-        && request.resource.data.orderNo.matches('^\\d{6}$')
+        && request.resource.data.orderNo.matches('^[0-9]{6}$')
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0
         && request.resource.data.total is number
