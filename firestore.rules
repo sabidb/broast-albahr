@@ -95,9 +95,24 @@ service cloud.firestore {
     // Orders: customers create their own (userUid must match caller);
     // customers read only their own; staff read/write scoped by branch.
     match /orders/{orderId} {
+      // Phase 3 shape checks — same guarantees the client-side validateOrder()
+      // enforces, mirrored server-side so a bypassed client can't sneak a
+      // malformed doc past. Keeps out empty items[], missing userPhone/orderNo,
+      // wrong types on totals — all preconditions the admin panel relies on.
       allow create: if signedIn()
         && request.resource.data.userUid == request.auth.uid
-        && request.resource.data.branch is string;
+        && request.resource.data.branch is string
+        && request.resource.data.branch.size() > 0
+        && request.resource.data.userPhone is string
+        && request.resource.data.userPhone.matches('^05\\d{8}$')
+        && request.resource.data.userName is string
+        && request.resource.data.orderNo is string
+        && request.resource.data.orderNo.matches('^\\d{6}$')
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.totals is map;
       // Read is allowed for the owning uid, the owning phone (so history
       // survives re-installs / new devices when the user re-enters their
       // number), or branch-scoped staff.

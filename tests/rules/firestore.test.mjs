@@ -70,22 +70,42 @@ describe('customer', () => {
     assertSucceeds(getDoc(doc(asCustomer('0501234567'), 'orders/o1'))));
   it('cannot read another customer\'s order', () =>
     assertFails(getDoc(doc(asCustomer('0501234567'), 'orders/o2'))));
-  it('can create an order that carries their own userUid', () =>
-    assertSucceeds(addDoc(collection(asCustomer('0501234567'), 'orders'), {
-      userUid: '0501234567', userPhone: '0501234567', branch: 'kakkiyah', total: 22,
-    })));
+  // Full valid Phase-3 payload — all required fields, correct types.
+  const goodOrder = (over = {}) => ({
+    userUid: '0501234567',
+    userPhone: '0501234567',
+    userName: 'Test Customer',
+    orderNo: '100042',
+    branch: 'kakkiyah',
+    items: [{ id: 'p1', name: 'Broast', price: 20, qty: 1 }],
+    total: 22,
+    totals: { subtotal: 20, pFee: 2, vat: 3, total: 22 },
+    ...over,
+  });
+  it('can create a valid Phase-3 order', () =>
+    assertSucceeds(addDoc(collection(asCustomer('0501234567'), 'orders'), goodOrder())));
   it('cannot create an order that spoofs another uid', () =>
-    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), {
-      userUid: 'someone-else-uid', userPhone: '0501234567', branch: 'kakkiyah', total: 1,
-    })));
-  it('cannot create an order missing userUid', () =>
-    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), {
-      userPhone: '0501234567', branch: 'kakkiyah', total: 1,
-    })));
-  it('cannot create an order missing branch', () =>
-    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), {
-      userUid: '0501234567', userPhone: '0501234567', total: 1,
-    })));
+    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), goodOrder({ userUid: 'someone-else' }))));
+  it('cannot create an order missing userUid', () => {
+    const o = goodOrder(); delete o.userUid;
+    return assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), o));
+  });
+  it('cannot create an order missing branch', () => {
+    const o = goodOrder(); delete o.branch;
+    return assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), o));
+  });
+  it('cannot create an order with empty items', () =>
+    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), goodOrder({ items: [] }))));
+  it('cannot create an order with malformed orderNo', () =>
+    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), goodOrder({ orderNo: 'abc' }))));
+  it('cannot create an order with bad phone format', () =>
+    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), goodOrder({ userPhone: '123' }))));
+  it('cannot create an order with non-number total', () =>
+    assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), goodOrder({ total: 'twenty' }))));
+  it('cannot create an order missing totals object', () => {
+    const o = goodOrder(); delete o.totals;
+    return assertFails(addDoc(collection(asCustomer('0501234567'), 'orders'), o));
+  });
   it('cannot write to settings/menu', () =>
     assertFails(setDoc(doc(asCustomer('0501234567'), 'settings/menu'), { menu: {} })));
   it('cannot write to branches', () =>

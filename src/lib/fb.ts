@@ -36,6 +36,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
 import type { Branch, Menu } from './data';
+import { validateOrder, validateCustomer, SchemaError } from './schema';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyB2PqybuRwuBjDQHgl1r9iFOC5b5lr81-s',
@@ -224,11 +225,19 @@ export const FB = {
     const orderNo = (o.orderNo as string) || (await FB.nextOrderNo());
     if (!db) return { fbId: null, orderNo };
     const clientOrderId = o.clientOrderId as string | undefined;
+    // Validate BEFORE stamping createdAt so a rejected payload never mints
+    // a phantom orderNo write. Throws SchemaError with a clear field path.
+    let validated: Record<string, unknown>;
+    try {
+      validated = validateOrder({ ...o, orderNo, status: 'new' }) as Record<string, unknown>;
+    } catch (err) {
+      const msg = err instanceof SchemaError ? err.message : String(err);
+      try { console.error('[FB.saveOrder] rejected by schema:', msg); } catch {}
+      return { fbId: null, orderNo };
+    }
     const payload = {
-      ...o,
-      orderNo,
+      ...validated,
       createdAt: serverTimestamp(),
-      status: 'new',
       statusHistory: [{ status: 'new', at: new Date().toISOString() }],
     };
     try {
@@ -261,10 +270,18 @@ export const FB = {
   }) {
     if (!db) return;
     try {
-      const data: Record<string, unknown> = { ...d, lastSeen: serverTimestamp() };
-      if (typeof d.loyaltyPoints === 'number') data.loyaltyPoints = increment(d.loyaltyPoints);
+      // Schema guard on the strict fields; loyaltyPoints becomes an increment
+      // sentinel below, which validateCustomer accepts as-is (opaque server value).
+      const validated = validateCustomer(d as unknown as Record<string, unknown>);
+      const data: Record<string, unknown> = { ...validated, lastSeen: serverTimestamp() };
+      if (typeof d.loyaltyPoints === 'number' && d.loyaltyPoints > 0) {
+        data.loyaltyPoints = increment(d.loyaltyPoints);
+      }
       await setDoc(doc(db, 'customers', d.uid), data, { merge: true });
-    } catch {}
+    } catch (err) {
+      const msg = err instanceof SchemaError ? err.message : String(err);
+      try { console.error('[FB.saveCustomer] rejected:', msg); } catch {}
+    }
   },
 
   async getCustomer(uid: string): Promise<Record<string, unknown> | null> {
