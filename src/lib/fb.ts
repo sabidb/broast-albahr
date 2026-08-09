@@ -375,7 +375,7 @@ export const FB = {
     ]);
     results.forEach((r, i) => {
       if (r.status === 'fulfilled' && r.value) {
-        r.value.docs.forEach((d) => rows.set(d.id, { fbId: d.id, ...d.data() }));
+        r.value.docs.forEach((d: any) => rows.set(d.id, { fbId: d.id, ...d.data() }));
       } else if (r.status === 'rejected') {
         const which = i === 0 ? 'phone' : 'uid';
         try { console.error(`[FB.getCustomerOrders] ${which} query failed`, r.reason); } catch {}

@@ -1,6 +1,6 @@
 import { VAT_RATE, type MenuItem, type Branch } from './data';
 
-export const APP_VERSION = '4.3.5';
+export const APP_VERSION = '4.3.6';
 
 /** Haversine distance in km between two lat/lng points. Used by BranchSelectStep to sort branches by proximity. */
 export function calcDistance(aLat: number, aLng: number, bLat: number, bLng: number): number {

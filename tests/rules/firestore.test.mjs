@@ -135,7 +135,7 @@ describe('owner', () => {
   it('can write settings/menu', () =>
     assertSucceeds(setDoc(doc(asOwner(), 'settings/menu'), { menu: {} })));
   it('can create branches', () =>
-    assertSucceeds(setDoc(doc(asOwner(), 'branches/new'), { nameEn: 'New' })));
+    assertSucceeds(setDoc(doc(asOwner(), 'branches/new'), { nameEn: 'New', nameAr: 'جديد' })));
   it('can create coupons', () =>
     assertSucceeds(setDoc(doc(asOwner(), 'coupons/NEW'), { discount: 5, type: 'fixed', active: true })));
   it('can manage staff', () =>
