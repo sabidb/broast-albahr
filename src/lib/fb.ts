@@ -293,15 +293,22 @@ export const FB = {
     } catch {}
   },
 
-  async getCustomerOrders(uid: string): Promise<Record<string, unknown>[]> {
-    if (!db) return [];
+  /**
+   * All orders belonging to a customer, keyed by phone so history survives
+   * a fresh install / new device (anonymous auth mints a new uid there).
+   * Rules permit read when the order's userPhone matches the caller's own
+   * customer-doc phone.
+   */
+  async getCustomerOrders(phone: string): Promise<Record<string, unknown>[]> {
+    if (!db || !phone) return [];
     try {
-      const q1 = query(collection(db, 'orders'), where('userUid', '==', uid));
+      const q1 = query(collection(db, 'orders'), where('userPhone', '==', phone));
       const snap = await getDocs(q1);
       return snap.docs
         .map((d) => ({ fbId: d.id, ...d.data() }))
         .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-    } catch {
+    } catch (err) {
+      try { console.error('[FB.getCustomerOrders] read failed', err); } catch {}
       return [];
     }
   },
@@ -334,17 +341,18 @@ export const FB = {
     }
   },
 
-  /** Live stream of a specific customer's orders (newest first). Server-filtered by userUid. */
-  onMyOrdersChange(uid: string, cb: (orders: any[]) => void): Unsub {
-    if (!db) return noop;
+  /** Live stream of a specific customer's orders (newest first). Server-filtered by phone so the stream spans devices. */
+  onMyOrdersChange(phone: string, cb: (orders: any[]) => void): Unsub {
+    if (!db || !phone) return noop;
     try {
-      const q1 = query(collection(db, 'orders'), where('userUid', '==', uid));
+      const q1 = query(collection(db, 'orders'), where('userPhone', '==', phone));
       return onSnapshot(q1, (s) => {
         const o = s.docs.map((d) => ({ fbId: d.id, ...d.data() }));
         o.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         cb(o);
       });
-    } catch {
+    } catch (err) {
+      try { console.error('[FB.onMyOrdersChange] subscribe failed', err); } catch {}
       return noop;
     }
   },

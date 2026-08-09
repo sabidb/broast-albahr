@@ -113,12 +113,14 @@ function AppInner() {
   // Menu filtered to the customer's selected branch — respects admin-set per-branch availability.
   const menuForBranch = useMemo(() => filterMenuForBranch(menu, branchId), [menu, branchId]);
 
-  // Load persisted orders + subscribe to live updates for this user
+  // Load persisted orders + subscribe to live updates for this user. Keyed
+  // by phone so history follows the customer to a new device/browser once
+  // they re-enter their number.
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.phone) return;
     let cancelled = false;
     (async () => {
-      const rows = await FB.getCustomerOrders(user.uid);
+      const rows = await FB.getCustomerOrders(user.phone);
       if (cancelled) return;
       const shaped: Order[] = rows.map((r: any) => ({
         orderNo: r.orderNo || '000000',
@@ -137,8 +139,10 @@ function AppInner() {
       }));
       setOrders(shaped);
     })();
-    // Live subscribe to just this customer's orders (server-filtered by uid).
-    const unsub = FB.onMyOrdersChange(user.uid, (mine) => {
+    // Live-subscribe to this customer's orders (server-filtered by phone).
+    // Patches status/rating on ones we already have and folds in any that
+    // aren't in local state yet (e.g. orders placed from another device).
+    const unsub = FB.onMyOrdersChange(user.phone, (mine) => {
       setOrders((prev) => {
         const map = new Map(prev.map((o) => [o.fbId || o.orderNo, o]));
         mine.forEach((o: any) => {
@@ -150,6 +154,22 @@ function AppInner() {
               status: o.status || existing.status,
               rating: o.rating || existing.rating,
             });
+          } else {
+            map.set(k, {
+              orderNo: o.orderNo || '000000',
+              date: o.date || new Date((o.createdAt?.seconds || 0) * 1000).toISOString(),
+              user: { name: o.userName || user.name, phone: o.userPhone || user.phone },
+              branchObj: o.branchObj || { nameEn: o.branch || '' },
+              orderType: o.orderType || 'pickup',
+              pickupTime: o.pickupTime || '',
+              paymentMethod: o.paymentMethod || 'cash',
+              couponCode: o.couponCode || '',
+              items: o.items || [],
+              totals: o.totals || { subtotal: 0, pFee: 0, discount: 0, vat: 0, total: o.total || 0 },
+              fbId: o.fbId,
+              status: o.status || 'new',
+              rating: o.rating || null,
+            });
           }
         });
         return Array.from(map.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -159,7 +179,7 @@ function AppInner() {
       cancelled = true;
       unsub();
     };
-  }, [user?.uid, user?.name]);
+  }, [user?.phone, user?.uid, user?.name]);
 
   const showToast = (msg: string) => {
     setToast(msg);

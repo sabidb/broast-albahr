@@ -33,6 +33,16 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/customers/$(request.auth.uid)).data.get('phone', '') == phone;
     }
 
+    // The phone the caller declared on their customer profile. Trusted at the
+    // "customer's own history" level only — real phone verification lands in
+    // Phase 10. Empty string if no customer doc yet (blocks the rule below).
+    function callerPhone() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/customers/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/customers/$(request.auth.uid)).data.get('phone', '')
+        : '';
+    }
+
     function isStaff() {
       // Owner + branch manager both count as staff. Read the role from users/{uid}.
       return signedIn()
@@ -88,7 +98,11 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.userUid == request.auth.uid
         && request.resource.data.branch is string;
+      // Read is allowed for the owning uid, the owning phone (so history
+      // survives re-installs / new devices when the user re-enters their
+      // number), or branch-scoped staff.
       allow read: if (signedIn() && resource.data.get('userUid', '') == request.auth.uid)
+        || (callerPhone() != '' && resource.data.get('userPhone', '') == callerPhone())
         || isBranchStaff(resource.data.branch);
       // Rating: the owning customer may attach a rating; everything else is staff-only.
       allow update: if isBranchStaff(resource.data.branch)
