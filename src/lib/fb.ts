@@ -284,6 +284,29 @@ export const FB = {
     }
   },
 
+  /**
+   * Sum loyaltyPoints across every customer doc that carries this phone.
+   * Anonymous re-installs mint fresh customer docs per uid, so a single
+   * real person can end up with several sibling docs — each holding only
+   * what its uid earned. This aggregates them so the visible balance
+   * reflects everything the customer has ever earned on this number.
+   */
+  async getLoyaltyByPhone(phone: string): Promise<number> {
+    if (!db || !phone) return 0;
+    try {
+      const snap = await getDocs(query(collection(db, 'customers'), where('phone', '==', phone)));
+      let sum = 0;
+      snap.docs.forEach((d) => {
+        const n = Number((d.data() as any)?.loyaltyPoints) || 0;
+        if (n > 0) sum += n;
+      });
+      return sum;
+    } catch (err) {
+      try { console.error('[FB.getLoyaltyByPhone] read failed', err); } catch {}
+      return 0;
+    }
+  },
+
   async getCustomer(uid: string): Promise<Record<string, unknown> | null> {
     if (!db) return null;
     try {

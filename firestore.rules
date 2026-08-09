@@ -87,9 +87,15 @@ service cloud.firestore {
     }
 
     // Customer profiles keyed by Firebase Auth uid (anonymous). Owning
-    // customer OR any staff may read/write. Cross-customer read denied.
+    // customer OR any staff may write. Read also allowed when the doc's
+    // phone equals the caller's declared phone — a re-installed customer
+    // needs to see sibling docs on the same phone to aggregate their
+    // loyalty points (Phase 10 will merge sibling docs server-side).
     match /customers/{uid} {
-      allow read, write: if ownsCustomer(uid) || isStaff();
+      allow read: if ownsCustomer(uid)
+        || (callerPhone() != '' && resource.data.get('phone', '') == callerPhone())
+        || isStaff();
+      allow write: if ownsCustomer(uid) || isStaff();
     }
 
     // Orders: customers create their own (userUid must match caller);

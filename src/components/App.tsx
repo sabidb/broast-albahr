@@ -81,11 +81,12 @@ function AppInner() {
       const ph = (doc?.phone as string) || '';
       if (nm && ph) setUser({ uid: au.uid, name: nm, phone: ph });
       else setUser(null); // profile not yet filled — force VerifyStep
-      // Hydrate loyalty from the server (customers/{uid}.loyaltyPoints holds
-      // the lifetime total, incremented on every order). Restrictive browsers
-      // nuke localStorage on refresh, so local state defaults to zero; the
-      // server number is the durable one — surface it.
-      const serverPts = Number((doc as any)?.loyaltyPoints) || 0;
+      // Hydrate loyalty from the server (sum across every customer doc on
+      // this phone — anon churn scatters points across sibling uids until
+      // Phase 10 merges them). Restrictive browsers nuke localStorage on
+      // refresh so local state defaults to zero; the server total is the
+      // durable one — surface it.
+      const serverPts = ph ? await FB.getLoyaltyByPhone(ph) : Number((doc as any)?.loyaltyPoints) || 0;
       if (serverPts > 0) {
         setLoyalty((prev) => {
           if (serverPts <= prev.lifetime) return prev;
