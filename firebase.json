@@ -5,5 +5,22 @@
   },
   "storage": {
     "rules": "storage.rules"
-  }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "region": "me-west1",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
+      ]
+    }
+  ]
 }
