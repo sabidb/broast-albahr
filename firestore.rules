@@ -54,19 +54,19 @@ service cloud.firestore {
     // ── collections ──────────────────────────────────────────────────────
 
     // Live menu, restaurant open/closed, announcement, per-branch invoice/printer
-    // configs, coupons config. Public read (any signed-in user). Owner-only write.
+    // configs, coupons config. PUBLIC READ so the customer can see the menu
+    // before signing in (menu is public info; browsers hit this on first load).
+    // Owner-only write.
     match /settings/{doc} {
-      allow read: if signedIn();
+      allow read: if true;
       allow write: if isOwner();
     }
 
-    // Branches — public read for the customer branch picker + admin lists.
-    // Owner creates/deletes/renames branches. Branch manager can edit only
-    // their own branch's mutable fields (hours, phone, address, active flag)
-    // — enforced by locking id/whitelisted fields; Phase 4 fills in the field
-    // whitelist once the branch schema stabilises.
+    // Branches — PUBLIC READ for the customer branch picker (shown before
+    // sign-in). Owner creates/deletes/renames; branch manager can edit only
+    // their own branch's mutable fields (hours, phone, address, active flag).
     match /branches/{branchId} {
-      allow read: if signedIn();
+      allow read: if true;
       allow create, delete: if isOwner();
       allow update: if isBranchStaff(branchId);
     }
@@ -100,10 +100,11 @@ service cloud.firestore {
       allow read, write: if signedIn();
     }
 
-    // Coupons catalog: read for signed-in clients (customer app validates codes
-    // client-side today; Phase 10 moves redemption server-side). Owner writes.
+    // Coupons catalog: PUBLIC READ (codes are already embedded in the customer
+    // bundle; Phase 10 moves redemption server-side and locks per-customer
+    // limits there). Owner writes.
     match /coupons/{code} {
-      allow read: if signedIn();
+      allow read: if true;
       allow write: if isOwner();
     }
 
