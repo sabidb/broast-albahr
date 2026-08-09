@@ -112,7 +112,11 @@ function AppInner() {
       const seedBranches = await FB.getBranches();
       if (seedBranches.length) setBranches(seedBranches);
       unsubBranches = FB.onBranchesChange((bs) => {
-        if (bs.length) setBranches(bs);
+        // Hide branches the admin has flagged inactive. `active === false`
+        // is opt-out; missing/true means visible so pre-Phase-4 rows keep
+        // showing without a migration.
+        const visible = bs.filter((b) => (b as any).active !== false);
+        if (visible.length) setBranches(visible);
       });
       unsubMenu = FB.onMenuChange((mm) => mm && setMenu(mm));
       unsubSettings = FB.onSettingsChange((ss) => setRestaurantClosed(ss.isOpen === false));

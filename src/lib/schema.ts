@@ -217,11 +217,14 @@ export interface BranchDoc {
   nameAr: string;
   active?: boolean;
   phone?: string;
+  whatsapp?: string;
   address?: string;
   lat?: number;
   lng?: number;
   hours?: { open?: string; close?: string };
   menuOverrides?: string[];
+  prepMinutesPickup?: number;
+  prepMinutesDelivery?: number;
 }
 export function validateBranch(input: Record<string, unknown>): BranchDoc {
   const out: BranchDoc = {
@@ -233,6 +236,8 @@ export function validateBranch(input: Record<string, unknown>): BranchDoc {
   if (active != null) out.active = active;
   const phone = optStr(input.phone, 'branch.phone', { max: 20 });
   if (phone) out.phone = phone;
+  const whatsapp = optStr(input.whatsapp, 'branch.whatsapp', { max: 20 });
+  if (whatsapp) out.whatsapp = whatsapp;
   const address = optStr(input.address, 'branch.address', { max: 500 });
   if (address) out.address = address;
   const lat = optNum(input.lat, 'branch.lat', { min: -90, max: 90 });
@@ -248,6 +253,10 @@ export function validateBranch(input: Record<string, unknown>): BranchDoc {
   if (Array.isArray(input.menuOverrides)) {
     out.menuOverrides = input.menuOverrides.map((s: any, i) => str(s, `branch.menuOverrides[${i}]`, { min: 1, max: 60 }));
   }
+  const prepP = optNum(input.prepMinutesPickup, 'branch.prepMinutesPickup', { min: 1, max: 240, int: true });
+  if (prepP != null) out.prepMinutesPickup = prepP;
+  const prepD = optNum(input.prepMinutesDelivery, 'branch.prepMinutesDelivery', { min: 1, max: 240, int: true });
+  if (prepD != null) out.prepMinutesDelivery = prepD;
   return out;
 }
 

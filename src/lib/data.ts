@@ -20,7 +20,20 @@ export interface MenuItem {
 }
 export type Menu = Record<string, MenuItem[]>;
 export interface Branch {
-  id: string; nameEn: string; nameAr: string; whatsapp: string; lat: number; lng: number;
+  id: string;
+  nameEn: string;
+  nameAr: string;
+  whatsapp: string;
+  lat: number;
+  lng: number;
+  // Phase 4 additions — all optional so existing/hardcoded rows stay valid.
+  phone?: string;
+  address?: string;
+  active?: boolean;
+  hours?: { open?: string; close?: string };
+  menuOverrides?: string[];
+  prepMinutesPickup?: number;
+  prepMinutesDelivery?: number;
 }
 export interface Coupon { discount: number; type: 'percent' | 'fixed'; label: string; }
 

@@ -36,7 +36,8 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
 import type { Branch, Menu } from './data';
-import { validateOrder, validateCustomer, SchemaError } from './schema';
+import { validateOrder, validateCustomer, validateBranch, SchemaError } from './schema';
+import { deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyB2PqybuRwuBjDQHgl1r9iFOC5b5lr81-s',
@@ -523,6 +524,25 @@ export const FB = {
     } catch {
       return noop;
     }
+  },
+
+  /**
+   * Save a branch doc (owner or branch-staff editing their own). Runs the
+   * Phase 3 schema guard and returns the branch id or throws a SchemaError.
+   * Called from the admin only — customers don't write branches.
+   */
+  async saveBranch(b: Record<string, unknown>): Promise<string> {
+    if (!db) throw new Error('no-db');
+    const validated = validateBranch(b);
+    await setDoc(doc(db, 'branches', validated.id), { ...validated, updatedAt: serverTimestamp() }, { merge: true });
+    return validated.id;
+  },
+
+  /** Delete a branch. Owner-only per rules — throws on rule denial. */
+  async deleteBranch(id: string): Promise<void> {
+    if (!db) throw new Error('no-db');
+    if (!id) throw new Error('missing-id');
+    await deleteDoc(doc(db, 'branches', id));
   },
 
   async getBranches(): Promise<Branch[]> {

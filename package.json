@@ -12,7 +12,8 @@
     "test:rules": "firebase emulators:exec --only firestore \"node --test tests/rules\"",
     "bootstrap:owner": "node scripts/set-owner-role.mjs",
     "migrate:orders": "node scripts/migrate-orders.mjs",
-    "migrate:orders:dry": "node scripts/migrate-orders.mjs --dry-run"
+    "migrate:orders:dry": "node scripts/migrate-orders.mjs --dry-run",
+    "seed:branches": "node scripts/seed-branches.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^3.6.3",

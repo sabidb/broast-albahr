@@ -79,11 +79,19 @@ service cloud.firestore {
 
     // Branches — PUBLIC READ for the customer branch picker (shown before
     // sign-in). Owner creates/deletes/renames; branch manager can edit only
-    // their own branch's mutable fields (hours, phone, address, active flag).
+    // their own branch's mutable fields (hours, phone, address, active flag,
+    // prep minutes). Phase 4 mirrors the client-side validateBranch guard.
     match /branches/{branchId} {
       allow read: if true;
-      allow create, delete: if isOwner();
-      allow update: if isBranchStaff(branchId);
+      allow create: if isOwner()
+        && request.resource.data.nameEn is string
+        && request.resource.data.nameEn.size() > 0
+        && request.resource.data.nameAr is string
+        && request.resource.data.nameAr.size() > 0;
+      allow update: if isBranchStaff(branchId)
+        && request.resource.data.nameEn is string
+        && request.resource.data.nameAr is string;
+      allow delete: if isOwner();
     }
 
     // Customer profiles keyed by Firebase Auth uid (anonymous). Owning
