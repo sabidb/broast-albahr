@@ -299,19 +299,34 @@ function AppInner() {
         date: new Date().toISOString(),
         clientOrderId: payload.clientOrderId,
       });
+      // Hard-fail branch. Without an fbId the submitOrder callable never
+      // wrote to Firestore — the admin will never see this order. Surface
+      // the error prominently instead of showing the success confetti with
+      // an empty order number: that dead-end used to swallow every
+      // "functions not deployed" / "permission denied" / "invalid payload"
+      // outcome silently. Rethrow the checkout back into place so the
+      // customer can retry (or send us the exact error).
+      if (!saved.fbId) {
+        const err = saved.error || 'unknown-error';
+        try { console.error('[order] submitOrder failed:', err); } catch {}
+        showToast(
+          isAr
+            ? `⚠️ لم يُحفظ الطلب — حاول مرة أخرى (${err})`
+            : `⚠️ Order not saved — please try again (${err})`,
+        );
+        setCheckoutOpen(true);
+        return;
+      }
       const orderNo = saved.orderNo;
       const order: Order = {
         ...payload,
         orderNo,
         date: new Date().toISOString(),
         status: 'new',
-        fbId: saved.fbId || undefined,
+        fbId: saved.fbId,
       };
       setOrders((prev) => [order, ...prev]);
       setLastOrder(order);
-      if (!saved.fbId && saved.error) {
-        showToast(isAr ? `⚠️ لم يُحفظ الطلب: ${saved.error}` : `⚠️ Order not saved: ${saved.error}`);
-      }
       const earned = pointsForOrder(order.totals.total, loyalty.lifetime);
       setLoyalty(addPoints(earned, `Order #${orderNo}`));
       if (user?.uid)
