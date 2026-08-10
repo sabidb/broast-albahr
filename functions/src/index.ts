@@ -49,7 +49,7 @@ import {
   type TierRule,
 } from './tiers.js';
 import {
-  evaluateOrderStreak, DEFAULT_STREAK_CONFIG,
+  evaluateOrderStreak, reverseOrderStreak, DEFAULT_STREAK_CONFIG,
   type StreakConfigDoc,
 } from './streaks.js';
 import {
@@ -493,6 +493,23 @@ async function submitOrderImpl(req: CallableRequest<SubmitOrderData>) {
         });
       } catch (err) { /* dispatch failure never rolls back the reward */ }
     }
+    // Stamp the first issued reward onto the order doc so the admin's
+    // print pipeline can render its QR + code block. Prefer the token
+    // code (Phase 11 secure) over the raw rewardId. Only the first
+    // reward makes it onto the paper — the rest still live in
+    // rewards/{id} and land as inbox notifications above.
+    const firstToken = issuedRewards.find((r) => !!r.tokenCode);
+    if (firstToken && firstToken.tokenCode) {
+      try {
+        await orderRef.update({
+          reward: {
+            code: firstToken.tokenCode,
+            label: firstToken.label || 'Reward unlocked',
+            rewardId: firstToken.id,
+          },
+        });
+      } catch (err) { /* non-blocking */ }
+    }
   } catch (err: any) {
     try { console.warn('[submitOrder] reward evaluation failed:', err?.message || err); } catch {}
   }
@@ -757,6 +774,41 @@ export const updateOrderStatus = onCall<UpdateOrderStatusData>(async (req: Calla
       try { console.warn('[updateOrderStatus] notification dispatch failed:', err?.message || err); } catch {}
     }
   }
+
+  // Phase 12/13 reversal on cancellation. The tier + streak bumps + points
+  // land inside submitOrder (at placement time) so a customer who cancels
+  // right after placing would keep credit they never earned. Reverse now.
+  // Idempotent per orderId (each reversal helper carries its own sentinel).
+  if (nextStatus === 'cancelled' && uid) {
+    try {
+      await reverseOrderPoints({
+        customerUid: uid, orderId, orderNo: String(cur.orderNo || ''),
+        reason: reason || 'cancelled', by: req.auth.uid,
+      });
+    } catch (err: any) { try { console.warn('[updateOrderStatus] point reversal failed:', err?.message || err); } catch {} }
+    try {
+      const db2 = getFirestore();
+      const custRef = db2.doc(`customers/${uid}`);
+      const sentinelRef = db2.doc(`customers/${uid}/lifetimeAggregates/${orderId}`);
+      await db2.runTransaction(async (tx: Transaction) => {
+        const [custSnap, sentSnap] = await Promise.all([tx.get(custRef), tx.get(sentinelRef)]);
+        if (!custSnap.exists) return;
+        const s = sentSnap.exists ? (sentSnap.data() as any) : null;
+        if (!s || s.reversed) return;
+        const delta = Math.max(0, Number(s.delta) || 0);
+        tx.update(custRef, {
+          lifetimeSpend: FieldValue.increment(-delta),
+          lifetimeOrders: FieldValue.increment(-1),
+        });
+        tx.update(sentinelRef, { reversed: true, reversedAt: new Date().toISOString() });
+      });
+      await recomputeTier(uid);
+    } catch (err: any) { try { console.warn('[updateOrderStatus] tier reversal failed:', err?.message || err); } catch {} }
+    try {
+      await reverseOrderStreak({ customerUid: uid, orderId });
+    } catch (err: any) { try { console.warn('[updateOrderStatus] streak reversal failed:', err?.message || err); } catch {} }
+  }
+
   return { ok: true, status: nextStatus, previous: curStatus };
 });
 
@@ -858,6 +910,15 @@ export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<R
   } catch (err: any) {
     try { console.warn('[refundOrder] point reversal failed:', err?.message || err); } catch {}
   }
+
+  // Phase 13 Wave B: streak reversal on refund. Config's countRefunded
+  // gate is inside reverseOrderStreak — if the owner opted to keep
+  // refunded orders in the streak, this is a no-op.
+  try {
+    if (cur.userUid) {
+      await reverseOrderStreak({ customerUid: String(cur.userUid), orderId });
+    }
+  } catch (err: any) { try { console.warn('[refundOrder] streak reversal failed:', err?.message || err); } catch {} }
 
   // Phase 13 Wave A: shave the refunded amount back off lifetimeSpend and
   // decrement the order count, then recompute the tier so a customer who

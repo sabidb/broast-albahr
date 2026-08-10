@@ -475,7 +475,11 @@ export const FB = {
       const snap = await getDocs(query(collection(db, 'customers'), where('phone', '==', phone)));
       let sum = 0;
       snap.docs.forEach((d) => {
-        const n = Number((d.data() as any)?.loyaltyPoints) || 0;
+        // Phase 12 mirrors the ledger balance onto customers/{uid}.points
+        // (source of truth). Fall back to the legacy loyaltyPoints field
+        // for customer docs that predate the ledger rollout.
+        const data = d.data() as any;
+        const n = Number(data?.points ?? data?.loyaltyPoints) || 0;
         if (n > 0) sum += n;
       });
       return sum;
