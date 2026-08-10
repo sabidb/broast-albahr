@@ -31,7 +31,9 @@ export type TemplateName =
   | 'points.earned' | 'points.redeemed'
   | 'streak.milestone' | 'campaign.available'
   // Phase 13 additions.
-  | 'tier.upgraded' | 'mission.available' | 'mission.completed';
+  | 'tier.upgraded' | 'mission.available' | 'mission.completed'
+  // Phase 14 — referral qualification (fires for both parties).
+  | 'referral.qualified';
 
 const T = (title: string, body: string, titleAr: string, bodyAr: string, kind = 'order'): Template =>
   ({ title, body, titleAr, bodyAr, kind });
@@ -55,6 +57,16 @@ export const TEMPLATES: Record<TemplateName, (ctx: Record<string, string>) => Te
   'tier.upgraded':      (c) => T(`Welcome to ${c.tier} ${c.emoji || ''}`.trim(), `You've reached the ${c.tier} tier — new perks unlocked!`, `مرحباً بك في ${c.tier} ${c.emoji || ''}`.trim(), `وصلت إلى مستوى ${c.tier} — امتيازات جديدة!`, 'tier'),
   'mission.available':  (c) => T('New mission',             c.body || `New mission: ${c.title}. Complete for a reward.`,  'مهمة جديدة',              c.bodyAr || `مهمة جديدة: ${c.titleAr || c.title || ''}. أكملها للمكافأة.`, 'mission'),
   'mission.completed':  (c) => T('Mission complete!',       `You completed "${c.title}" — ${c.reward || 'reward unlocked'}.`, 'أكملت المهمة!',      `أكملت "${c.titleAr || c.title || ''}" — ${c.rewardAr || c.reward || 'مكافأة'}.`, 'mission'),
+  'referral.qualified': (c) => T(
+    c.role === 'referrer' ? 'Your referral paid off!' : 'Welcome bonus unlocked',
+    c.role === 'referrer'
+      ? `A friend used your code ${c.code} — +${c.points} pts.`
+      : `You joined via ${c.code} — +${c.points} pts credited.`,
+    c.role === 'referrer' ? 'مكافأة الإحالة!' : 'مكافأة الترحيب',
+    c.role === 'referrer'
+      ? `صديقك استعمل رمزك ${c.code} — +${c.points} نقطة.`
+      : `انضممت باستخدام ${c.code} — +${c.points} نقطة.`,
+    'referral'),
 };
 
 export function render(name: TemplateName, ctx: Record<string, string>): Template {

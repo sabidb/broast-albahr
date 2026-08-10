@@ -56,6 +56,15 @@
     { "collectionGroup": "customerMissions", "queryScope": "COLLECTION", "fields": [
       { "fieldPath": "customerUid", "order": "ASCENDING" },
       { "fieldPath": "status", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "referrals", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "referrerUid", "order": "ASCENDING" },
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "qualifiedAt", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "referrals", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "refereeUid", "order": "ASCENDING" },
+      { "fieldPath": "status", "order": "ASCENDING" }
     ]}
   ],
   "fieldOverrides": []

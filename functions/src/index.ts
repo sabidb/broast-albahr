@@ -55,6 +55,10 @@ import {
 import {
   evaluateMissionsForOrder,
 } from './missions.js';
+import {
+  attachReferral, qualifyReferralOnOrder, getOrMintReferralCode,
+  DEFAULT_REFERRAL_CONFIG, type ReferralConfigDoc,
+} from './referrals.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -613,6 +617,19 @@ async function submitOrderImpl(req: CallableRequest<SubmitOrderData>) {
     });
   } catch (err: any) {
     try { console.warn('[submitOrder] mission evaluation failed:', err?.message || err); } catch {}
+  }
+
+  // Phase 14 — referral qualification. If the customer arrived through a
+  // valid ?ref=… code AND this order clears the min-spend threshold AND
+  // caps aren't exhausted, both sides get the configured points bonus.
+  // Idempotent per referral row (ledger dedupKey handles retries).
+  try {
+    await qualifyReferralOnOrder({
+      refereeUid: uid, orderId: clientOrderId, orderNo,
+      orderTotal: total, refereePhone: userPhone,
+    });
+  } catch (err: any) {
+    try { console.warn('[submitOrder] referral qualify failed:', err?.message || err); } catch {}
   }
 
   return {
@@ -1260,5 +1277,55 @@ export const deleteMission = onCall<DeleteMissionData>(async (req: CallableReque
   const id = String(req.data?.id || '').trim();
   if (!id) throw new HttpsError('invalid-argument', 'id required.');
   await getFirestore().doc(`missions/${id}`).delete();
+  return { ok: true };
+});
+
+// ── Phase 14 callables — referrals ─────────────────────────────────────
+
+interface AttachReferralData { code: string }
+
+/** Customer-signed-in call: attach a referral code to my customer profile. */
+export const attachReferralCode = onCall<AttachReferralData>(async (req: CallableRequest<AttachReferralData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const uid = req.auth.uid;
+  const code = String(req.data?.code || '').trim().toUpperCase();
+  if (!code) throw new HttpsError('invalid-argument', 'code required.');
+  const db = getFirestore();
+  const cust = await db.doc(`customers/${uid}`).get();
+  const phone = cust.exists ? String((cust.data() as any).phone || '') : '';
+  const res = await attachReferral({ refereeUid: uid, refereePhone: phone, code });
+  return res;
+});
+
+/** Return the caller's own referral code, minting on first call. */
+export const getMyReferralCode = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  try {
+    const res = await getOrMintReferralCode(req.auth.uid);
+    return { ok: true, ...res };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'mint-failed' };
+  }
+});
+
+interface SaveReferralConfigData { config: ReferralConfigDoc }
+
+/** Owner-only: replace the referral config. */
+export const saveReferralConfig = onCall<SaveReferralConfigData>(async (req: CallableRequest<SaveReferralConfigData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const c = req.data?.config;
+  if (!c || typeof c !== 'object') throw new HttpsError('invalid-argument', 'config required.');
+  await getFirestore().doc('settings/referralConfig').set({
+    enabled: c.enabled !== false,
+    minOrderTotal: Math.max(0, Math.min(5000, Number(c.minOrderTotal) || DEFAULT_REFERRAL_CONFIG.minOrderTotal)),
+    rewardReferrerPoints: Math.max(0, Math.min(5000, Math.floor(Number(c.rewardReferrerPoints) || DEFAULT_REFERRAL_CONFIG.rewardReferrerPoints))),
+    rewardRefereePoints: Math.max(0, Math.min(5000, Math.floor(Number(c.rewardRefereePoints) || DEFAULT_REFERRAL_CONFIG.rewardRefereePoints))),
+    maxPerReferrerDay: Math.max(0, Math.min(1000, Math.floor(Number(c.maxPerReferrerDay) || DEFAULT_REFERRAL_CONFIG.maxPerReferrerDay))),
+    maxPerReferrerLifetime: Math.max(0, Math.min(100000, Math.floor(Number(c.maxPerReferrerLifetime) || DEFAULT_REFERRAL_CONFIG.maxPerReferrerLifetime))),
+    expiryDays: Math.max(1, Math.min(365, Math.floor(Number(c.expiryDays) || DEFAULT_REFERRAL_CONFIG.expiryDays))),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
   return { ok: true };
 });

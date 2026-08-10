@@ -800,4 +800,51 @@ export const FB = {
       return (res.data as any)?.tier || null;
     } catch { return null; }
   },
+
+  // ── Phase 14 — referrals ──────────────────────────────────────────────
+
+  /** Live referral config (settings/referralConfig). */
+  onReferralConfigChange(cb: (cfg: any | null) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(doc(db, 'settings', 'referralConfig'), (s) => cb(s.exists() ? (s.data() as any) : null));
+    } catch { return noop; }
+  },
+
+  /** Mint/return the signed-in customer's referral code. */
+  async getMyReferralCode(): Promise<string | null> {
+    if (!fns) return null;
+    try {
+      const call = httpsCallable(fns, 'getMyReferralCode');
+      const res = await call({});
+      const d = res.data as any;
+      return d?.ok ? String(d.code || '') : null;
+    } catch { return null; }
+  },
+
+  /**
+   * Attach an inbound referral code to the caller. Returns the callable's
+   * shaped response (`{ ok, error?, referralId?, referrerUid? }`) so the UI
+   * can pick the right toast — "already attached", "self-referral", etc.
+   */
+  async attachReferralCode(code: string): Promise<{ ok: boolean; error?: string }> {
+    if (!fns) return { ok: false, error: 'no-fns' };
+    try {
+      const call = httpsCallable(fns, 'attachReferralCode');
+      const res = await call({ code });
+      const d = res.data as any;
+      return d && typeof d.ok === 'boolean' ? d : { ok: false, error: 'bad-response' };
+    } catch (e: any) {
+      return { ok: false, error: (e && e.code) || (e && e.message) || 'call-failed' };
+    }
+  },
+
+  /** Live list of the caller's own referrals (for the "You referred N friends" card). */
+  onMyReferralsChange(uid: string, cb: (rows: any[]) => void): Unsub {
+    if (!db || !uid) return noop;
+    try {
+      const q1 = query(collection(db, 'referrals'), where('referrerUid', '==', uid));
+      return onSnapshot(q1, (s) => cb(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))));
+    } catch { return noop; }
+  },
 };

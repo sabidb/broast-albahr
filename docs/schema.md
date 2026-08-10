@@ -234,6 +234,55 @@ Rule: customer reads own; write server-only.
 
 ---
 
+## Phase 14 — referral collections
+
+### `settings/referralConfig`
+
+Owner-editable via `saveReferralConfig` callable.
+
+| field                    | type       | notes |
+| ------------------------ | ---------- | ----- |
+| `enabled`                | boolean    | master switch |
+| `minOrderTotal`          | number     | SAR the referee must spend to qualify |
+| `rewardReferrerPoints`   | int        | credited to the code owner on qualify |
+| `rewardRefereePoints`    | int        | credited to the new customer on qualify |
+| `maxPerReferrerDay`      | int        | rolling-24h ceiling (0 = unlimited) |
+| `maxPerReferrerLifetime` | int        | lifetime ceiling (0 = unlimited) |
+| `expiryDays`             | int 1..365 | pending referrals expire after this |
+
+### `customers/{uid}` — Phase 14 additions
+
+| field                     | type                | notes |
+| ------------------------- | ------------------- | ----- |
+| `referralCode`            | string              | server-minted, unique; format `BA[A-Z0-9]{6}` |
+| `referredBy`              | string              | the code that referred this customer (set once, before any order) |
+| `referredByUid`           | string              | back-ref to referrer |
+| `referredAt`              | serverTimestamp     | when attach landed |
+| `referralQualifiedCount`  | int                 | number of referrals this customer has already qualified (aggregate mirror) |
+
+### `referralCodes/{code}`
+
+Reverse index only. `{ code, customerUid, createdAt }`. **No client reads** — rules deny both, so a farmer can't harvest codes. Attach validation goes through the callable.
+
+### `referrals/{id}` (id = `refereeUid__code`)
+
+| field                     | type      | notes |
+| ------------------------- | --------- | ----- |
+| `referrerUid`             | string    | code owner |
+| `referrerCode`            | string    | the code used |
+| `refereeUid`              | string    | new customer |
+| `refereePhone`            | string    | for self-referral audit |
+| `status`                  | string    | `pending` → `qualified`/`expired` |
+| `createdAt`               | server ts | attach time |
+| `expiresAt`               | ISO       | +expiryDays from attach |
+| `qualifiedAt`             | ISO       | first qualifying order timestamp |
+| `qualifyingOrderId/No/Total` | mixed  | audit fields on qualify |
+| `expiredAt`               | ISO       | stamped when the row flips expired |
+
+Rule: either party (`referrerUid` or `refereeUid` = caller) reads; staff reads any; writes server-only.
+
+---
+
 ## Migration
 
 `scripts/migrate-orders.mjs` brings pre-Phase-2 orders up to this shape:

@@ -60,6 +60,9 @@ function AppInner() {
   const [orderStreak, setOrderStreak] = useState<any | null>(null);
   const [missions, setMissions] = useState<any[]>([]);
   const [missionStates, setMissionStates] = useState<any[]>([]);
+  // Phase 14 — server-minted referral code + inbound-code attach.
+  const [myRefCode, setMyRefCode] = useState<string | null>(null);
+  const [myReferrals, setMyReferrals] = useState<any[]>([]);
   const orderCounter = useRef(1000);
   const isAr = lang === 'ar';
 
@@ -217,11 +220,50 @@ function AppInner() {
     });
     const unsubMissions = FB.onActiveMissionsChange((ms) => setMissions(ms));
     const unsubMissionStates = FB.onMyMissionStatesChange(user.uid, (st) => setMissionStates(st));
+    const unsubReferrals = FB.onMyReferralsChange(user.uid, (rs) => setMyReferrals(rs));
     return () => {
       unsubCust();
       unsubMissions();
       unsubMissionStates();
+      unsubReferrals();
     };
+  }, [user?.uid]);
+
+  // Phase 14 — capture ?ref=<code> from the URL on the first render (before
+  // sign-in), stash it in sessionStorage so it survives the VerifyStep
+  // roundtrip, then attach it AFTER the customer profile is filled AND we
+  // haven't already attached. Once attached, clear the stash.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const ref = url.searchParams.get('ref');
+      if (ref && !sessionStorage.getItem('ba_ref_pending')) {
+        sessionStorage.setItem('ba_ref_pending', ref.trim().toUpperCase());
+        // Scrub the querystring so bookmarks / shares don't leak the code.
+        url.searchParams.delete('ref');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    (async () => {
+      const code = await FB.getMyReferralCode();
+      if (!cancelled) setMyRefCode(code || null);
+      let pending: string | null = null;
+      try { pending = sessionStorage.getItem('ba_ref_pending'); } catch {}
+      if (pending && !cancelled) {
+        const res = await FB.attachReferralCode(pending);
+        // Consume the pending code even on failure — a bad code shouldn't
+        // keep retrying on every reload.
+        try { sessionStorage.removeItem('ba_ref_pending'); } catch {}
+        if (res.ok) {
+          showToast(isAr ? '🎁 مكافأة الترحيب بانتظارك بعد أول طلب' : '🎁 Welcome bonus after your first order');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, [user?.uid]);
 
   const showToast = (msg: string) => {
@@ -423,6 +465,8 @@ function AppInner() {
               orderStreak={orderStreak}
               missions={missions}
               missionStates={missionStates}
+              myRefCode={myRefCode}
+              myReferrals={myReferrals}
               onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
               onLogout={async () => {
                 await FB.signOut();

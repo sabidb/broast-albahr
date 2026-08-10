@@ -42,6 +42,8 @@ export default function AccountScreen({
   orderStreak,
   missions,
   missionStates,
+  myRefCode,
+  myReferrals,
 }: {
   user: { uid: string; name: string; phone: string };
   loyalty: LoyaltyState;
@@ -53,6 +55,8 @@ export default function AccountScreen({
   orderStreak?: OrderStreak | null;
   missions?: MissionSummary[];
   missionStates?: Array<{ missionId: string; status: string; completions: number }>;
+  myRefCode?: string | null;
+  myReferrals?: Array<{ id: string; status: string; refereePhone?: string; qualifiedAt?: string }>;
 }) {
   const [chat, setChat] = useState(false);
   const [addressesOpen, setAddressesOpen] = useState(false);
@@ -267,7 +271,7 @@ export default function AccountScreen({
         ))}
       </motion.div>
 
-      <ReferralCard phone={user.phone} isAr={isAr} />
+      <ReferralCard phone={user.phone} isAr={isAr} serverCode={myRefCode} referrals={myReferrals} />
 
       <div className="mt-6 text-center text-[11px] font-bold text-brand-muted">
         Broast Al Bahr · بروست البحر

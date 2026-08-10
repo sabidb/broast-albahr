@@ -248,6 +248,25 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Phase 14 — referral codes reverse index (referralCodes/{code}).
+    // NO client reads: exposing this would let a farmer harvest codes.
+    // Attach-time validation goes through the attachReferralCode callable
+    // which reads via the Admin SDK.
+    match /referralCodes/{code} {
+      allow read, write: if false;
+    }
+
+    // Phase 14 — referrals ledger (referrals/{id}).
+    // Customer reads only rows where they are either party (referrer or
+    // referee) so both sides can see conversion progress. Staff reads any.
+    // Writes server-only (attachReferralCode + qualifyReferralOnOrder).
+    match /referrals/{id} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.get('referrerUid', '') == request.auth.uid)
+        || (signedIn() && resource.data.get('refereeUid', '') == request.auth.uid);
+      allow write: if false;
+    }
+
     // Everything else denied.
     match /{document=**} {
       allow read, write: if false;
