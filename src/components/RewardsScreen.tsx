@@ -50,31 +50,63 @@ export default function RewardsScreen({
   uid?: string;
   onRedeem: (r: Reward) => void;
 }) {
-  const tier = tierFor(loyalty.lifetime);
-  const nxt = nextTier(loyalty.lifetime);
-  const pct = tierProgress(loyalty.lifetime);
-  const flames = weekFlames(streak.count);
   // Phase 11 — the customer's AVAILABLE reward codes (issued by the
   // server-side reward engine). Fetched on mount so the screen doesn't need
   // an auth state change to render them.
   const [tokens, setTokens] = useState<Array<{ code: string; label: string; expiresAt: string; kind?: string; value?: number }>>([]);
-  // Phase 12 — server-side points balance, preferred over the localStorage
-  // cache when it's non-zero (the ledger is the source of truth).
-  const [serverBalance, setServerBalance] = useState<number | null>(null);
+  // Phase 12 — server-side balance/lifetime + ledger activity, kept in
+  // sync live so a redemption on another device deducts here too. Nulls
+  // mean "not yet loaded" and the UI falls back to the local cache.
+  const [serverBalance,  setServerBalance]  = useState<number | null>(null);
+  const [serverLifetime, setServerLifetime] = useState<number | null>(null);
+  const [ledger, setLedger] = useState<Array<{ delta: number; reason: string; at: string }>>([]);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     if (!uid) return;
     let alive = true;
     (async () => {
-      const [t, b] = await Promise.all([FB.getMyRewardTokens(uid), FB.getMyPointsBalance(uid)]);
+      const [t, b, hist] = await Promise.all([
+        FB.getMyRewardTokens(uid),
+        FB.getMyPointsBalance(uid),
+        FB.getMyPointsLedger(uid, 20),
+      ]);
       if (!alive) return;
       setTokens(t);
-      if (b > 0) setServerBalance(b);
+      // Trust the server value even when it's zero — that's the whole
+      // point of the cross-device sync. The old `if (b > 0)` guard let a
+      // stale localStorage balance mask a full redemption.
+      setServerBalance(b);
+      setLedger(hist);
     })();
-    return () => { alive = false; };
-  }, [uid]);
+    // Live subscription: any customers/{uid} write (order earn, redeem
+    // debit, tier recompute) republishes here. Every device stays in sync
+    // without a manual refresh.
+    const unsub = FB.onCustomerDoc(uid, (d) => {
+      if (!d) return;
+      const p = Number((d as any).points);
+      const l = Number((d as any).lifetimeSpend);
+      if (Number.isFinite(p)) setServerBalance(p);
+      if (Number.isFinite(l)) setServerLifetime(l);
+    });
+    return () => { alive = false; unsub(); };
+  }, [uid, reloadTick]);
 
-  const shownPoints = serverBalance != null ? serverBalance : loyalty.points;
+  const shownPoints    = serverBalance  != null ? serverBalance  : loyalty.points;
+  const shownLifetime  = serverLifetime != null && serverLifetime > shownLifetime
+    ? serverLifetime
+    : shownLifetime;
+  const tier = tierFor(shownLifetime);
+  const nxt  = nextTier(shownLifetime);
+  const pct  = tierProgress(shownLifetime);
+  const flames = weekFlames(streak.count);
+
+  const handleRedeem = async (r: Reward) => {
+    await onRedeem(r);
+    // Kick a re-fetch so tokens + ledger repaint immediately; the doc
+    // subscription already refreshes the balance.
+    setReloadTick((n) => n + 1);
+  };
 
   // parallax on scroll
   const { scrollY } = useScroll();
@@ -113,8 +145,8 @@ export default function RewardsScreen({
         <div className="mt-3 text-[12px] font-bold opacity-90">
           {nxt
             ? isAr
-              ? `${nxt.min - loyalty.lifetime} نقطة حتى ${nxt.emoji} ${nxt.nameAr}`
-              : `${nxt.min - loyalty.lifetime} pts to ${nxt.emoji} ${nxt.name}`
+              ? `${Math.max(0, nxt.min - shownLifetime)} نقطة حتى ${nxt.emoji} ${nxt.nameAr}`
+              : `${Math.max(0, nxt.min - shownLifetime)} pts to ${nxt.emoji} ${nxt.name}`
             : isAr
               ? 'أعلى مستوى! 💎'
               : 'Top tier reached! 💎'}
@@ -224,7 +256,7 @@ export default function RewardsScreen({
               </div>
               <motion.button
                 whileTap={can ? { scale: 0.94 } : undefined}
-                onClick={() => can && onRedeem(r)}
+                onClick={() => can && handleRedeem(r)}
                 disabled={!can}
                 className="mt-3 w-full rounded-2xl py-2 text-xs font-black transition"
                 style={{
@@ -244,7 +276,7 @@ export default function RewardsScreen({
       <div className="mb-2 mt-6 text-[15px] font-black text-brand-ink">{isAr ? 'المستويات' : 'Tiers'}</div>
       <div className="flex gap-2">
         {TIERS.map((t) => {
-          const reached = loyalty.lifetime >= t.min;
+          const reached = shownLifetime >= t.min;
           const current = tier.name === t.name;
           return (
             <motion.div
@@ -264,30 +296,38 @@ export default function RewardsScreen({
         })}
       </div>
 
-      {/* activity */}
-      {loyalty.history.length > 0 && (
-        <>
-          <div className="mb-2 mt-6 text-[15px] font-black text-brand-ink">{isAr ? 'النشاط' : 'Activity'}</div>
-          <div className="flex flex-col gap-2">
-            {loyalty.history.slice(0, 8).map((h, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: 18 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, amount: 0.5 }}
-                transition={{ delay: i * 0.04, duration: 0.4 }}
-                className="flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 shadow-soft ring-1 ring-brand-line"
-              >
-                <span className="text-[12px] font-bold text-brand-ink2">{h.reason}</span>
-                <span className={`text-[13px] font-black ${h.delta >= 0 ? 'text-brand-green' : 'text-brand-red'}`}>
-                  {h.delta >= 0 ? '+' : ''}
-                  {h.delta}
-                </span>
-              </motion.div>
-            ))}
-          </div>
-        </>
-      )}
+      {/* activity — server ledger when available, local cache otherwise. The
+          ledger is the source of truth so redemptions on another device also
+          show up here. */}
+      {(() => {
+        const rows = ledger.length > 0
+          ? ledger.map((h) => ({ reason: h.reason, delta: h.delta, key: (h.at || '') + h.reason }))
+          : loyalty.history.slice(0, 8).map((h, i) => ({ reason: h.reason, delta: h.delta, key: 'l' + i }));
+        if (rows.length === 0) return null;
+        return (
+          <>
+            <div className="mb-2 mt-6 text-[15px] font-black text-brand-ink">{isAr ? 'النشاط' : 'Activity'}</div>
+            <div className="flex flex-col gap-2">
+              {rows.slice(0, 12).map((h, i) => (
+                <motion.div
+                  key={h.key}
+                  initial={{ opacity: 0, x: 18 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true, amount: 0.5 }}
+                  transition={{ delay: i * 0.04, duration: 0.4 }}
+                  className="flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 shadow-soft ring-1 ring-brand-line"
+                >
+                  <span className="text-[12px] font-bold text-brand-ink2">{h.reason}</span>
+                  <span className={`text-[13px] font-black ${h.delta >= 0 ? 'text-brand-green' : 'text-brand-red'}`}>
+                    {h.delta >= 0 ? '+' : ''}
+                    {h.delta}
+                  </span>
+                </motion.div>
+              ))}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

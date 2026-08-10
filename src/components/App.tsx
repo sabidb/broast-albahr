@@ -217,6 +217,23 @@ function AppInner() {
       if (!d) return;
       if (d.tier) setServerTier(d.tier);
       if (d.streak) setOrderStreak(d.streak);
+      // Cross-device loyalty sync — the server ledger is the source of
+      // truth for `points`, and every device that watches this doc will
+      // see a redemption debit or an order earn as soon as the mirror
+      // write lands. Without this, device B kept showing the localStorage
+      // balance from device A's last session.
+      const serverPts   = Number((d as any).points);
+      const serverLife  = Number((d as any).lifetimeSpend);
+      if (Number.isFinite(serverPts) || Number.isFinite(serverLife)) {
+        setLoyalty((prev) => {
+          const points   = Number.isFinite(serverPts)  ? serverPts  : prev.points;
+          const lifetime = Number.isFinite(serverLife) ? Math.max(serverLife, prev.lifetime) : prev.lifetime;
+          if (points === prev.points && lifetime === prev.lifetime) return prev;
+          const next = { points, lifetime, history: prev.history, redeemed: prev.redeemed };
+          try { localStorage.setItem('ba_loyalty_v1', JSON.stringify(next)); } catch {}
+          return next;
+        });
+      }
     });
     const unsubMissions = FB.onActiveMissionsChange((ms) => setMissions(ms));
     const unsubMissionStates = FB.onMyMissionStatesChange(user.uid, (st) => setMissionStates(st));
@@ -350,16 +367,38 @@ function AppInner() {
     setOrders((prev) => prev.map((o) => (o.fbId === fbId ? { ...o, rating: { stars, comment } } : o)));
   };
 
-  const onRedeem = (r: Reward) => {
-    const res = redeem(r.id);
-    if (res.ok) {
-      setLoyalty(res.state);
-      showToast(
-        isAr
-          ? `تم! استخدم الرمز ${r.code} ${r.counter ? '(عند الفرع)' : 'عند الدفع'}`
-          : `Unlocked! Use ${r.code} ${r.counter ? '(at counter)' : 'at checkout'}`,
-      );
+  const onRedeem = async (r: Reward) => {
+    // Server-side redeem — debits customers/{uid}.points via the ledger
+    // and mints a Phase-11 token the customer can enter on checkout. Without
+    // this, a redemption on device A was invisible to device B (local-only
+    // debit) and the customer could double-spend the same balance.
+    if (loyalty.points < r.cost) {
+      showToast(isAr ? '❌ نقاط غير كافية' : '❌ Not enough points');
+      return;
     }
+    const kind = r.counter ? 'perk' : 'coupon';
+    const server = await FB.redeemPointsForReward({
+      cost: r.cost,
+      label: isAr ? r.titleAr : r.title,
+      kind,
+      value: 0,
+      expiresInDays: 30,
+    });
+    if (!server || !server.ok) {
+      const reason = server && server.error ? String(server.error) : 'unknown-error';
+      showToast(isAr ? `⚠️ تعذّر الاستبدال (${reason})` : `⚠️ Redeem failed (${reason})`);
+      return;
+    }
+    // Optimistic local mirror so the hero updates instantly; the live
+    // customer-doc subscription will reconcile against the server value.
+    const local = redeem(r.id);
+    if (local.ok) setLoyalty(local.state);
+    const issuedCode = server.code || r.code;
+    showToast(
+      isAr
+        ? `تم! استخدم الرمز ${issuedCode} ${r.counter ? '(عند الفرع)' : 'عند الدفع'}`
+        : `Unlocked! Use ${issuedCode} ${r.counter ? '(at counter)' : 'at checkout'}`,
+    );
   };
 
   const cartCount = Object.values(cart).reduce((s, i) => s + (i.qty || 0), 0);
@@ -570,6 +609,7 @@ function AppInner() {
           >
             <CheckoutStep
               cart={cart}
+              setCart={setCart}
               user={user}
               isAr={isAr}
               defaultBranchId={branchId}

@@ -19,6 +19,7 @@ function Section({ children }: { children: React.ReactNode }) {
 
 interface Props {
   cart: Cart;
+  setCart: React.Dispatch<React.SetStateAction<Cart>>;
   user: { name: string; phone: string };
   onBack: () => void;
   onOrderPlaced: (o: any) => void;
@@ -27,8 +28,38 @@ interface Props {
   branches: Branch[];
 }
 
-export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, defaultBranchId, branches }: Props) {
+export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlaced, isAr, defaultBranchId, branches }: Props) {
   const items = Object.values(cart) as MenuItem[];
+
+  // Live edits to the cart from within checkout. Qty 0 removes the row so
+  // the customer doesn't have to bounce back to the menu just to drop a
+  // line, and per-item notes ("no onions", "extra spicy") land on the
+  // kitchen ticket without leaving the checkout flow.
+  const bumpQty = (id: string, delta: number) => {
+    setCart((prev) => {
+      const it = prev[id];
+      if (!it) return prev;
+      const next = { ...prev };
+      const q = (it.qty || 0) + delta;
+      if (q <= 0) { delete next[id]; return next; }
+      next[id] = { ...it, qty: q };
+      return next;
+    });
+  };
+  const setItemNote = (id: string, note: string) => {
+    setCart((prev) => {
+      const it = prev[id];
+      if (!it) return prev;
+      return { ...prev, [id]: { ...it, note } };
+    });
+  };
+  const removeItem = (id: string) => {
+    setCart((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
   const [branch, setBranch] = useState(defaultBranchId || '');
   const [pay, setPay] = useState('cash');
   const [note, setNote] = useState('');
@@ -355,22 +386,59 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
         <Section>
           <div className="card-surface p-5">
             <span className={label}>{isAr ? 'ملخص الطلب' : 'ORDER SUMMARY'}</span>
+            {items.length === 0 && (
+              <div className="py-4 text-center text-[13px] font-bold text-brand-muted">
+                {isAr ? 'السلة فارغة' : 'Your cart is empty'}
+              </div>
+            )}
             {items.map((i) => (
-              <div key={i.id} className="mb-2 text-[13px] font-bold">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-brand-ink2">
-                    <span className="inline-block h-6 w-6 shrink-0 overflow-hidden rounded-md">
-                      <ItemImage item={i} iconSize={14} />
-                    </span>
-                    {isAr ? i.nameAr : i.name} ×{i.qty}
+              <div key={i.id} className="mb-3 border-b border-brand-line pb-3 last:border-b-0 last:pb-0">
+                <div className="flex items-start gap-2">
+                  <span className="inline-block h-9 w-9 shrink-0 overflow-hidden rounded-lg">
+                    <ItemImage item={i} iconSize={18} />
                   </span>
-                  <span className="font-black text-brand-red">{money(i.price * (i.qty || 0))}</span>
-                </div>
-                {i.note && (
-                  <div className="ms-8 mt-0.5 text-[11px] font-semibold italic text-brand-muted">
-                    📝 {i.note}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-black text-brand-ink">{isAr ? i.nameAr : i.name}</div>
+                    <div className="mt-0.5 text-[11px] font-bold text-brand-muted">
+                      {money(i.price)} {isAr ? 'للوحدة' : 'each'}
+                    </div>
                   </div>
-                )}
+                  <div className="text-end">
+                    <div className="font-black text-brand-red">{money(i.price * (i.qty || 0))}</div>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1 rounded-full border-2 border-brand-line bg-white">
+                    <button
+                      onClick={() => bumpQty(i.id, -1)}
+                      aria-label="decrease"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[16px] font-black text-brand-ink2 active:bg-brand-line"
+                    >
+                      −
+                    </button>
+                    <span className="min-w-[24px] text-center text-[13px] font-black text-brand-ink">{i.qty || 0}</span>
+                    <button
+                      onClick={() => bumpQty(i.id, +1)}
+                      aria-label="increase"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[16px] font-black text-brand-red active:bg-brand-red/10"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => removeItem(i.id)}
+                    className="rounded-xl bg-brand-red/10 px-3 py-1.5 text-[11px] font-black text-brand-red"
+                  >
+                    {isAr ? '🗑 إزالة' : '🗑 Remove'}
+                  </button>
+                </div>
+                <textarea
+                  value={i.note || ''}
+                  onChange={(e) => setItemNote(i.id, e.target.value)}
+                  placeholder={isAr ? 'ملاحظة على هذا الصنف (اختياري)' : 'Note for this item (optional)'}
+                  rows={2}
+                  className="mt-2 w-full resize-none rounded-xl border-2 border-brand-line bg-white px-3 py-2 text-[12px] font-semibold text-brand-ink outline-none focus:border-brand-red"
+                />
               </div>
             ))}
             <div className="mt-3 border-t border-brand-line pt-3">

@@ -401,6 +401,21 @@ export const FB = {
   },
 
   /**
+   * Live subscription to this customer's doc so every device sees the
+   * same balance / lifetime / tier snapshot as soon as the server
+   * ledger writes update the mirror fields. Fires on mount with the
+   * current snapshot, then again on every write. Returns unsubscribe.
+   */
+  onCustomerDoc(uid: string, cb: (data: Record<string, unknown> | null) => void): () => void {
+    if (!db || !uid) { cb(null); return () => {}; }
+    try {
+      return onSnapshot(doc(db, 'customers', uid), (s) => {
+        cb(s.exists() ? (s.data() as Record<string, unknown>) : null);
+      }, () => cb(null));
+    } catch { cb(null); return () => {}; }
+  },
+
+  /**
    * Phase 12 — redeem points for a reward. Server-side: debits the ledger
    * and mints a Phase-11 token (12-char code + QR) in one call. The customer
    * uses the returned code on their next order.
