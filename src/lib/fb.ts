@@ -306,6 +306,36 @@ export const FB = {
   },
 
   /**
+   * Phase 11 — validate a reward code / QR payload for the current customer.
+   * Read-only preview; use reserveRewardCode to actually hold it during
+   * checkout. Returns { ok, code, reward, error } — the caller flashes a
+   * green / red state under the code input.
+   */
+  async validateRewardCode(input: { codeOrPayload: string; branchId?: string; orderTotal?: number }): Promise<any> {
+    if (!fns) return { ok: false, error: 'functions-unavailable' };
+    try {
+      const call = httpsCallable<any, any>(fns, 'validateRewardCode');
+      const res = await call(input);
+      return res.data;
+    } catch (err: any) {
+      const code = err?.code || err?.name || 'unknown';
+      return { ok: false, error: `${code}: ${err?.message || String(err)}` };
+    }
+  },
+
+  async reserveRewardCode(input: { codeOrPayload: string; orderId: string; branchId?: string; orderTotal?: number }): Promise<any> {
+    if (!fns) return { ok: false, error: 'functions-unavailable' };
+    try {
+      const call = httpsCallable<any, any>(fns, 'reserveRewardCode');
+      const res = await call(input);
+      return res.data;
+    } catch (err: any) {
+      const code = err?.code || err?.name || 'unknown';
+      return { ok: false, error: `${code}: ${err?.message || String(err)}` };
+    }
+  },
+
+  /**
    * Register (or refresh) an FCM device token with the customer profile
    * so server-side dispatchNotification can push to them. No-op if the
    * browser hasn't granted permission or the VAPID key isn't configured

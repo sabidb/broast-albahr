@@ -34,6 +34,12 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { priceOrder, toMinor, type LineIn } from './pricing.js';
 import { dispatchNotification, type TemplateName } from './notifications.js';
 import { evaluateForOrder as evaluateRewardsForOrder } from './rewards.js';
+import {
+  mintTokenFor, validateToken as validateRewardToken,
+  reserveToken as reserveRewardToken, redeemToken as redeemRewardToken,
+  parseQrPayload as parseRewardQr, qrPayloadFor as rewardQrPayload,
+  sweepExpired as sweepRewardTokens,
+} from './rewardTokens.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -167,6 +173,8 @@ interface SubmitOrderData {
   pickupTime?: string;
   note?: string;
   couponCode?: string;
+  /** Phase 11 — 12-char reward token or full QR payload. */
+  rewardToken?: string;
   orderType?: string;
 }
 
@@ -404,9 +412,11 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
 
   await orderRef.set(payload);
 
-  // Phase 10: evaluate reward rules. Any issued rewards are queued for the
-  // customer to redeem on a future order — this call never blocks or fails
-  // the order write.
+  // Phase 10 + 11: evaluate reward rules AFTER the order lands. Every
+  // issued reward is minted a 12-char token (Phase 11); the token code is
+  // what the customer sees on the invoice + notification, and it is what
+  // they scan/enter at the counter. The token has an opaque QR payload
+  // (HMAC of the code) so a scan can't be spoofed offline.
   let issuedRewards: any[] = [];
   try {
     issuedRewards = await evaluateRewardsForOrder({
@@ -416,21 +426,53 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
       orderNo,
       orderTotal: total,
     });
-    // Notify the customer for each newly issued reward (Phase 9 template).
     for (const r of issuedRewards) {
+      try {
+        const tok = await mintTokenFor(r.id);
+        r.tokenCode = tok.code;
+        r.qrPayload = tok.qr;
+      } catch (err) { /* mint failure logged, reward stays sans token */ }
       try {
         await dispatchNotification({
           templateName: 'reward.issued',
-          ctx: { label: r.label, code: r.id.slice(0, 8).toUpperCase() },
+          ctx: { label: r.label, code: r.tokenCode || r.id.slice(0, 8).toUpperCase() },
           phone: userPhone,
           uid,
           dedupKey: `reward:${r.id}:issued`,
-          meta: { rewardId: r.id, ruleId: r.ruleId, kind: r.kind },
+          meta: { rewardId: r.id, ruleId: r.ruleId, kind: r.kind, code: r.tokenCode || null },
         });
       } catch (err) { /* dispatch failure never rolls back the reward */ }
     }
   } catch (err: any) {
     try { console.warn('[submitOrder] reward evaluation failed:', err?.message || err); } catch {}
+  }
+
+  // Phase 11 redemption confirmation: if the client passed a reward token as
+  // `rewardToken` (parallel to couponCode), the reservation should already
+  // have been claimed by validateAndReserveRewardToken during the checkout
+  // preview. Flip it to REDEEMED now that the order has landed. Failures
+  // are non-fatal — the order still stands; support can manually resolve.
+  const rewardTokenClaimed = String(data.rewardToken || '').trim().toUpperCase();
+  if (rewardTokenClaimed) {
+    try {
+      const code = rewardTokenClaimed.includes('.') ? parseRewardQr(rewardTokenClaimed) : rewardTokenClaimed;
+      if (code) {
+        const res = await redeemRewardToken({ code, customerUid: uid, orderId: clientOrderId, orderNo });
+        if (res.ok) {
+          await orderRef.update({ redeemedRewardCode: code });
+          try {
+            await dispatchNotification({
+              templateName: 'reward.redeemed',
+              ctx: { label: (res.reward && res.reward.label) || 'reward', orderNo },
+              phone: userPhone,
+              uid,
+              dedupKey: `reward:${code}:redeemed:${clientOrderId}`,
+              meta: { orderId: clientOrderId, orderNo, code },
+            });
+          } catch (err) { /* no-op */ }
+        }
+      }
+    } catch (err) { /* no-op */ }
   }
 
   return {
@@ -640,6 +682,57 @@ export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<R
   }
   return { ok: true, status: 'refunded', amount: refundedAmount };
 });
+
+// ── Phase 11 reward-token callables ────────────────────────────────────
+
+interface ValidateRewardCodeData {
+  codeOrPayload: string;
+  branchId?: string;
+  productIds?: (string | number)[];
+  orderTotal?: number;
+}
+
+/** Read-only preview — used by the checkout UI to show "Reward applies" before reserving. */
+export const validateRewardCode = onCall<ValidateRewardCodeData>(async (req: CallableRequest<ValidateRewardCodeData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const res = await validateRewardToken({
+    codeOrPayload: String(req.data?.codeOrPayload || ''),
+    customerUid: req.auth.uid,
+    branchId: req.data?.branchId,
+    productIds: req.data?.productIds,
+    orderTotal: Number(req.data?.orderTotal || 0),
+  });
+  return res;
+});
+
+interface ReserveRewardCodeData extends ValidateRewardCodeData { orderId: string; }
+/** Reserve a token to a specific clientOrderId — atomic, single-writer. */
+export const reserveRewardCode = onCall<ReserveRewardCodeData>(async (req: CallableRequest<ReserveRewardCodeData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const orderId = String(req.data?.orderId || '').trim();
+  if (!orderId) throw new HttpsError('invalid-argument', 'orderId required.');
+  const res = await reserveRewardToken({
+    codeOrPayload: String(req.data?.codeOrPayload || ''),
+    customerUid: req.auth.uid,
+    branchId: req.data?.branchId,
+    productIds: req.data?.productIds,
+    orderTotal: Number(req.data?.orderTotal || 0),
+    orderId,
+  });
+  return res;
+});
+
+/** Owner-triggered sweep — releases expired reservations, marks TTL'd tokens expired. */
+export const sweepRewardTokensNow = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  return sweepRewardTokens();
+});
+
+// Keep parseRewardQr / rewardQrPayload visible so callers of this module can
+// share the same code paths without duplicating the format.
+export const rewardTokenHelpers = { parseRewardQr, rewardQrPayload };
 
 interface RegisterFcmTokenData {
   token: string;

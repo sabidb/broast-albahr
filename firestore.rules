@@ -193,6 +193,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Phase 11: 12-char reward tokens. Customer reads only tokens keyed to
+    // their own uid (so the app can render "your available rewards");
+    // writes go through validateRewardCode / reserveRewardCode /
+    // (implicit) redeem-during-submitOrder callables — never client-direct.
+    match /rewardTokens/{code} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid);
+      allow write: if false;
+    }
+
     // Everything else denied.
     match /{document=**} {
       allow read, write: if false;
