@@ -40,6 +40,9 @@ import {
   parseQrPayload as parseRewardQr, qrPayloadFor as rewardQrPayload,
   sweepExpired as sweepRewardTokens,
 } from './rewardTokens.js';
+import {
+  awardOrderPoints, reverseOrderPoints, appendLedger,
+} from './points.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -475,12 +478,38 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
     } catch (err) { /* no-op */ }
   }
 
+  // Phase 12: award standard points for this order. Idempotent per orderId
+  // (a retry doesn't double-credit). Balance is mirrored on
+  // customers/{uid}.points; ledger under pointsLedger/{id} is the truth.
+  let pointsAwarded = 0;
+  try {
+    const res = await awardOrderPoints({
+      customerUid: uid, orderId: clientOrderId, orderNo, orderTotal: total,
+    });
+    if (res.ok && typeof res.delta === 'number') {
+      pointsAwarded = res.delta;
+      try {
+        await dispatchNotification({
+          templateName: 'points.earned',
+          ctx: { orderNo, points: String(res.delta), balance: String(res.balance || 0) },
+          phone: userPhone,
+          uid,
+          dedupKey: `points.earned:${clientOrderId}`,
+          meta: { orderId: clientOrderId, orderNo, points: res.delta, balance: res.balance },
+        });
+      } catch (err) { /* no-op */ }
+    }
+  } catch (err: any) {
+    try { console.warn('[submitOrder] points award failed:', err?.message || err); } catch {}
+  }
+
   return {
     fbId: clientOrderId,
     orderNo,
     status: 'new',
     existing: false,
     rewardsIssued: issuedRewards.length,
+    pointsAwarded,
   };
 });
 
@@ -680,7 +709,133 @@ export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<R
   } catch (err: any) {
     try { console.warn('[refundOrder] notification dispatch failed:', err?.message || err); } catch {}
   }
+
+  // Phase 12: reverse the points that were awarded when this order landed.
+  // Idempotent per orderId (dedupKey inside reverseOrderPoints).
+  try {
+    if (cur.userUid) {
+      await reverseOrderPoints({
+        customerUid: String(cur.userUid),
+        orderId,
+        orderNo: String(cur.orderNo || ''),
+        reason: reason || 'refund',
+        by: req.auth.uid,
+      });
+    }
+  } catch (err: any) {
+    try { console.warn('[refundOrder] point reversal failed:', err?.message || err); } catch {}
+  }
+
   return { ok: true, status: 'refunded', amount: refundedAmount };
+});
+
+// ── Phase 12: points callables ──────────────────────────────────────────
+
+interface AdjustPointsData {
+  customerUid: string;
+  delta: number;
+  reason: string;
+  allowNegative?: boolean;
+}
+
+/** Owner-only manual points adjustment. Writes a `admin.adjust` ledger entry. */
+export const adjustPoints = onCall<AdjustPointsData>(async (req: CallableRequest<AdjustPointsData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const customerUid = String(req.data?.customerUid || '').trim();
+  const delta = Math.round(Number(req.data?.delta) || 0);
+  const reason = String(req.data?.reason || '').trim();
+  if (!customerUid) throw new HttpsError('invalid-argument', 'customerUid required.');
+  if (!reason) throw new HttpsError('invalid-argument', 'reason required.');
+  if (delta === 0) throw new HttpsError('invalid-argument', 'delta must be non-zero.');
+  const res = await appendLedger({
+    customerUid, delta, reason, source: 'admin.adjust',
+    by: req.auth.uid,
+    allowNegative: !!req.data?.allowNegative || delta > 0, // positive is always fine
+  });
+  if (!res.ok) throw new HttpsError('failed-precondition', res.error || 'append failed');
+  return { ok: true, balance: res.balance, delta };
+});
+
+/**
+ * Redeem points for a reward. Debits the ledger and issues a Phase 10/11
+ * reward + token in one transaction. The customer scans/uses the token on
+ * a future order.
+ */
+interface RedeemPointsData {
+  cost: number;       // points to deduct
+  label: string;      // human-readable "SR 10 off"
+  kind: string;       // reward kind — mirrors Phase 10 RewardKind
+  value?: number;
+  productId?: string | number;
+  expiresInDays?: number;
+}
+export const redeemPointsForReward = onCall<RedeemPointsData>(async (req: CallableRequest<RedeemPointsData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const uid = req.auth.uid;
+  const cost = Math.round(Number(req.data?.cost) || 0);
+  const label = String(req.data?.label || '').trim();
+  const kind = String(req.data?.kind || '').trim();
+  if (cost <= 0) throw new HttpsError('invalid-argument', 'cost must be positive.');
+  if (!label) throw new HttpsError('invalid-argument', 'label required.');
+  if (!kind) throw new HttpsError('invalid-argument', 'kind required.');
+
+  const db = getFirestore();
+  const custSnap = await db.doc(`customers/${uid}`).get();
+  if (!custSnap.exists) throw new HttpsError('failed-precondition', 'Complete your profile first.');
+  const phone = String((custSnap.data() as any).phone || '');
+
+  // Debit the ledger — will fail with 'insufficient-balance' if not enough.
+  const debit = await appendLedger({
+    customerUid: uid, delta: -cost,
+    reason: `Redeemed: ${label}`,
+    source: 'redeem.reward',
+  });
+  if (!debit.ok) {
+    throw new HttpsError(
+      debit.error === 'insufficient-balance' ? 'failed-precondition' : 'internal',
+      debit.error || 'debit failed',
+    );
+  }
+
+  // Mint the reward record + token so the customer can redeem it later.
+  const expiresInDays = Number(req.data?.expiresInDays) > 0 ? Number(req.data?.expiresInDays) : 30;
+  const nowIso = new Date().toISOString();
+  const expiresIso = new Date(Date.now() + expiresInDays * 86400_000).toISOString();
+  const rewardRef = db.collection('rewards').doc();
+  await rewardRef.set({
+    id: rewardRef.id,
+    ruleId: '__points_redeem__',
+    ruleName: 'Points Redemption',
+    customerUid: uid,
+    customerPhone: phone,
+    kind,
+    value: req.data?.value,
+    productId: req.data?.productId,
+    label,
+    status: 'available',
+    issuedAt: nowIso,
+    expiresAt: expiresIso,
+    pointsCost: cost,
+  });
+  let tokenCode: string | undefined;
+  try {
+    const tok = await mintTokenFor(rewardRef.id);
+    tokenCode = tok.code;
+  } catch (err) { /* token failed but reward remains */ }
+
+  try {
+    await dispatchNotification({
+      templateName: 'points.redeemed',
+      ctx: { points: String(cost), label, balance: String(debit.balance || 0) },
+      phone, uid,
+      dedupKey: `points.redeemed:${rewardRef.id}`,
+      meta: { rewardId: rewardRef.id, code: tokenCode || null },
+    });
+  } catch (err) { /* no-op */ }
+
+  return { ok: true, rewardId: rewardRef.id, code: tokenCode, balance: debit.balance };
 });
 
 // ── Phase 11 reward-token callables ────────────────────────────────────

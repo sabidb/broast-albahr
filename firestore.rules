@@ -203,6 +203,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Phase 12: immutable points ledger. Customer reads only their own
+    // entries; staff reads any (support / audit). ALL writes go through
+    // appendLedger via the callable — direct writes would break the
+    // before/after invariant and the balance mirror on customers/{uid}.
+    match /pointsLedger/{id} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid);
+      allow write: if false;
+    }
+
     // Everything else denied.
     match /{document=**} {
       allow read, write: if false;

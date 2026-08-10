@@ -336,6 +336,23 @@ export const FB = {
   },
 
   /**
+   * Phase 12 — redeem points for a reward. Server-side: debits the ledger
+   * and mints a Phase-11 token (12-char code + QR) in one call. The customer
+   * uses the returned code on their next order.
+   */
+  async redeemPointsForReward(input: { cost: number; label: string; kind: string; value?: number; productId?: string | number; expiresInDays?: number }): Promise<any> {
+    if (!fns) return { ok: false, error: 'functions-unavailable' };
+    try {
+      const call = httpsCallable<any, any>(fns, 'redeemPointsForReward');
+      const res = await call(input);
+      return res.data;
+    } catch (err: any) {
+      const code = err?.code || err?.name || 'unknown';
+      return { ok: false, error: `${code}: ${err?.details?.message || err?.message || String(err)}` };
+    }
+  },
+
+  /**
    * Register (or refresh) an FCM device token with the customer profile
    * so server-side dispatchNotification can push to them. No-op if the
    * browser hasn't granted permission or the VAPID key isn't configured
