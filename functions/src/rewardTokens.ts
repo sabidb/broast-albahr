@@ -23,8 +23,8 @@
 import { getFirestore, FieldValue, Transaction } from 'firebase-admin/firestore';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 
-// Confusable-free alphabet: 32 chars, no 0/O/1/I/L. Any 12-char code drawn
-// from this alphabet has ~60 bits of entropy — collision probability is
+// Confusable-free alphabet: 31 chars, no 0/O/1/I/L. Any 12-char code drawn
+// from this alphabet has ~59 bits of entropy — collision probability is
 // negligible at the scale of "hundreds per day" the plan calls for.
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LEN = 12;
@@ -56,16 +56,26 @@ function signingKey(): string {
   return 'albahr-unset-secret-fallback-DO-NOT-SHIP';
 }
 
-/** Generate a cryptographically-secure 12-char code from ALPHABET. */
+/**
+ * Generate a cryptographically-secure 12-char code from ALPHABET.
+ *
+ * ALPHABET has 31 entries. Masking with 0x1F gives 0..31 → the value 31
+ * lands past the end, so we reject it and try the next byte. The reserve
+ * buffer is 4× the code length so rejection sampling with 31/32 acceptance
+ * rate has room to breathe (probability of running out is ~10^-6).
+ */
 export function generateCode(): string {
-  const bytes = randomBytes(CODE_LEN * 2);
+  const bytes = randomBytes(CODE_LEN * 4);
   let out = '';
-  let i = 0;
-  while (out.length < CODE_LEN && i < bytes.length) {
-    const b = bytes[i++];
-    // Unbiased draw from a 32-char alphabet — take the low 5 bits.
-    // (b & 0x1F) is 0..31, always a valid index into ALPHABET.
-    out += ALPHABET[b & 0x1F];
+  for (let i = 0; i < bytes.length && out.length < CODE_LEN; i++) {
+    const idx = bytes[i] & 0x1F;
+    if (idx >= ALPHABET.length) continue; // reject-sample past the alphabet
+    out += ALPHABET[idx];
+  }
+  if (out.length < CODE_LEN) {
+    // Extremely unlikely fallback — recurse with fresh bytes rather than
+    // pad with a biased char that would leak entropy.
+    return generateCode();
   }
   return out;
 }
