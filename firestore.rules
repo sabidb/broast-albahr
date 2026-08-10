@@ -178,6 +178,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Phase 10: reward rules — owner-managed. Customers never touch these.
+    match /rewardRules/{id} {
+      allow read: if isStaff();
+      allow write: if isOwner();
+    }
+
+    // Phase 10: issued reward records. Customer reads their own; staff reads
+    // any (support / debugging). Writes are server-only — the engine's
+    // budgeted issuance + Phase 11's atomic redemption go through callables.
+    match /rewards/{id} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid);
+      allow write: if false;
+    }
+
     // Everything else denied.
     match /{document=**} {
       allow read, write: if false;

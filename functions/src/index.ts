@@ -33,6 +33,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { priceOrder, toMinor, type LineIn } from './pricing.js';
 import { dispatchNotification, type TemplateName } from './notifications.js';
+import { evaluateForOrder as evaluateRewardsForOrder } from './rewards.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -403,11 +404,41 @@ export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<S
 
   await orderRef.set(payload);
 
+  // Phase 10: evaluate reward rules. Any issued rewards are queued for the
+  // customer to redeem on a future order — this call never blocks or fails
+  // the order write.
+  let issuedRewards: any[] = [];
+  try {
+    issuedRewards = await evaluateRewardsForOrder({
+      customerUid: uid,
+      customerPhone: userPhone,
+      orderId: clientOrderId,
+      orderNo,
+      orderTotal: total,
+    });
+    // Notify the customer for each newly issued reward (Phase 9 template).
+    for (const r of issuedRewards) {
+      try {
+        await dispatchNotification({
+          templateName: 'reward.issued',
+          ctx: { label: r.label, code: r.id.slice(0, 8).toUpperCase() },
+          phone: userPhone,
+          uid,
+          dedupKey: `reward:${r.id}:issued`,
+          meta: { rewardId: r.id, ruleId: r.ruleId, kind: r.kind },
+        });
+      } catch (err) { /* dispatch failure never rolls back the reward */ }
+    }
+  } catch (err: any) {
+    try { console.warn('[submitOrder] reward evaluation failed:', err?.message || err); } catch {}
+  }
+
   return {
     fbId: clientOrderId,
     orderNo,
     status: 'new',
     existing: false,
+    rewardsIssued: issuedRewards.length,
   };
 });
 
