@@ -28,6 +28,7 @@
 
 import { onCall, HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
+import { defineSecret } from 'firebase-functions/params';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -46,6 +47,19 @@ import {
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
+
+/**
+ * REWARD_TOKEN_SIGNING_KEY — HMAC key for the Phase 11 QR payload.
+ *
+ * Set once in prod:
+ *   firebase functions:secrets:set REWARD_TOKEN_SIGNING_KEY
+ *
+ * Every callable that reads or writes a rewardTokens doc attaches this
+ * secret via `secrets: [REWARD_TOKEN_SIGNING_KEY]` on its options so the
+ * runtime injects it into process.env before the handler runs. Rotating
+ * the key invalidates every outstanding QR — do it deliberately.
+ */
+const REWARD_TOKEN_SIGNING_KEY = defineSecret('REWARD_TOKEN_SIGNING_KEY');
 
 type Role = 'owner' | 'branch' | 'staff' | 'none';
 const VALID_ROLES: readonly Role[] = ['owner', 'branch', 'staff', 'none'] as const;
@@ -199,7 +213,7 @@ interface FlatMenuItem {
  * looked up + recomputed here from the trusted menu doc, so a manipulated
  * client bundle cannot inflate discounts or drop prices.
  */
-export const submitOrder = onCall<SubmitOrderData>(async (req: CallableRequest<SubmitOrderData>) => {
+export const submitOrder = onCall<SubmitOrderData>({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req: CallableRequest<SubmitOrderData>) => {
   if (!req.auth) {
     throw new HttpsError('unauthenticated', 'Sign in required.');
   }
@@ -771,7 +785,7 @@ interface RedeemPointsData {
   productId?: string | number;
   expiresInDays?: number;
 }
-export const redeemPointsForReward = onCall<RedeemPointsData>(async (req: CallableRequest<RedeemPointsData>) => {
+export const redeemPointsForReward = onCall<RedeemPointsData>({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req: CallableRequest<RedeemPointsData>) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const uid = req.auth.uid;
   const cost = Math.round(Number(req.data?.cost) || 0);
@@ -848,7 +862,7 @@ interface ValidateRewardCodeData {
 }
 
 /** Read-only preview — used by the checkout UI to show "Reward applies" before reserving. */
-export const validateRewardCode = onCall<ValidateRewardCodeData>(async (req: CallableRequest<ValidateRewardCodeData>) => {
+export const validateRewardCode = onCall<ValidateRewardCodeData>({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req: CallableRequest<ValidateRewardCodeData>) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const res = await validateRewardToken({
     codeOrPayload: String(req.data?.codeOrPayload || ''),
@@ -862,7 +876,7 @@ export const validateRewardCode = onCall<ValidateRewardCodeData>(async (req: Cal
 
 interface ReserveRewardCodeData extends ValidateRewardCodeData { orderId: string; }
 /** Reserve a token to a specific clientOrderId — atomic, single-writer. */
-export const reserveRewardCode = onCall<ReserveRewardCodeData>(async (req: CallableRequest<ReserveRewardCodeData>) => {
+export const reserveRewardCode = onCall<ReserveRewardCodeData>({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req: CallableRequest<ReserveRewardCodeData>) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const orderId = String(req.data?.orderId || '').trim();
   if (!orderId) throw new HttpsError('invalid-argument', 'orderId required.');
@@ -878,7 +892,7 @@ export const reserveRewardCode = onCall<ReserveRewardCodeData>(async (req: Calla
 });
 
 /** Owner-triggered sweep — releases expired reservations, marks TTL'd tokens expired. */
-export const sweepRewardTokensNow = onCall(async (req) => {
+export const sweepRewardTokensNow = onCall({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const caller = await readCallerRole(req.auth.uid);
   if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');

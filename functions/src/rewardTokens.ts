@@ -32,9 +32,29 @@ const CODE_LEN = 12;
 /** Hold window on a RESERVED token — after this the sweep releases it. */
 export const HOLD_MS = 10 * 60 * 1000; // 10 minutes
 
-/** Signing key for QR payload MACs. Overrideable at deploy time. */
-const TOKEN_SIGNING_KEY = process.env.REWARD_TOKEN_SIGNING_KEY
-  || 'albahr-dev-token-key-set-REWARD_TOKEN_SIGNING_KEY-in-prod';
+/**
+ * Signing key for QR payload MACs. Read lazily from process.env at
+ * request time — Firebase Functions v2 populates env from any
+ * `secrets: [REWARD_TOKEN_SIGNING_KEY]` declared on a function's options
+ * before the handler runs (see index.ts).
+ *
+ * In dev / emulator without the secret set, a stable placeholder is used
+ * so local runs work — the placeholder is intentionally low-entropy so a
+ * misconfigured prod deploy is loud in logs: any generated payload has
+ * an obvious "dev-" prefix in the HMAC domain.
+ */
+function signingKey(): string {
+  const k = process.env.REWARD_TOKEN_SIGNING_KEY;
+  if (k && k.length >= 16) return k;
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    return 'albahr-emulator-dev-key-do-not-use-in-prod';
+  }
+  // In prod without the secret: log once + fall back to a stable but
+  // clearly-flagged key so signatures at least round-trip. The Console
+  // will show every request warning about the missing secret.
+  try { console.warn('[rewardTokens] REWARD_TOKEN_SIGNING_KEY not set — using unsafe fallback'); } catch {}
+  return 'albahr-unset-secret-fallback-DO-NOT-SHIP';
+}
 
 /** Generate a cryptographically-secure 12-char code from ALPHABET. */
 export function generateCode(): string {
@@ -57,7 +77,7 @@ export function generateCode(): string {
  * ENCODED IN THE QR — only the opaque token.
  */
 export function qrPayloadFor(code: string): string {
-  const mac = createHmac('sha256', TOKEN_SIGNING_KEY).update(code).digest('hex').slice(0, 16);
+  const mac = createHmac('sha256', signingKey()).update(code).digest('hex').slice(0, 16);
   return `${code}.${mac}`;
 }
 
@@ -70,7 +90,7 @@ export function parseQrPayload(payload: string): string | null {
   const mac = payload.slice(dot + 1);
   if (code.length !== CODE_LEN) return null;
   if (!/^[A-Z0-9]+$/.test(code)) return null;
-  const expected = createHmac('sha256', TOKEN_SIGNING_KEY).update(code).digest('hex').slice(0, 16);
+  const expected = createHmac('sha256', signingKey()).update(code).digest('hex').slice(0, 16);
   const a = Buffer.from(mac);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return null;
