@@ -152,6 +152,88 @@ server callable when Blaze arrives).
 
 ---
 
+---
+
+## Phase 13 — engagement collections
+
+### `settings/tierConfig`
+
+Owner-editable. Overrides the default Bronze/Silver/Gold/VIP ladder.
+
+| field   | type                              | notes |
+| ------- | --------------------------------- | ----- |
+| `tiers` | array of `{id,name,nameAr?,emoji?,color?,metric,min,pointsMult?,perks?[],perksAr?[]}` | `metric` ∈ `spend|points|orders` |
+| `updatedAt` | serverTimestamp | |
+
+Rule: public read (customer needs it to render its badge before sign-in); write is server-only through `saveTierConfig`.
+
+### `customers/{uid}` — Phase 13 additions
+
+| field              | type                                        | notes |
+| ------------------ | ------------------------------------------- | ----- |
+| `lifetimeSpend`    | number                                      | mirrored from every completed order via server incrementer |
+| `lifetimeOrders`   | number                                      | same |
+| `tier`             | `TierSnapshot` (see `functions/src/tiers.ts`) | server-computed, mirrored per order |
+| `streak`           | `{current,best,windowStart,lastOrderAt,lastMilestone?}` | server-computed from `streakOrders` |
+
+### `customers/{uid}/lifetimeAggregates/{orderId}`
+
+Sentinel doc — presence marks that the order has already contributed to `lifetimeSpend` / `lifetimeOrders`. `reversed:true` marks the refund adjustment.
+
+### `customers/{uid}/streakOrders/{orderId}`
+
+Sentinel doc — presence marks that the order counted towards the streak. `reversed:true` marks the refund adjustment (when `streakConfig.countRefunded === false`).
+
+### `settings/streakConfig`
+
+| field           | type                                                | notes |
+| --------------- | --------------------------------------------------- | ----- |
+| `enabled`       | boolean                                             | when `false`, evaluator is a no-op |
+| `windowDays`    | int 1..365                                          | rolling window |
+| `minOrders`     | int 1..100                                          | reserved for future "considered a streak" gating |
+| `countRefunded` | boolean                                             | if false, refunds decrement the streak |
+| `milestones`    | array of `{threshold,label,labelAr?,bonusPoints?}`  | crossed at-most-once per customer (bonus points via ledger dedup) |
+
+Rule: public read (customer surfaces "next milestone"); write server-only via `saveStreakConfig`.
+
+### `missions/{id}`
+
+Owner-managed. Kinds: `combo`, `product`, `spend`, `quiet_hours`.
+
+| field                 | type              | notes |
+| --------------------- | ----------------- | ----- |
+| `title` / `titleAr`   | string            | display |
+| `description`, `descriptionAr` | string   | free-form |
+| `kind`                | string            | predicate selector |
+| `active`              | boolean           | evaluator filters on this |
+| `fromISO`, `toISO`    | ISO date          | optional window |
+| `branches`            | string[]          | scope; missing = any branch |
+| `itemIds`, `itemQty`  | array / int       | combo (all present) / product (aggregate qty) |
+| `quietFromHHMM`, `quietToHHMM` | string   | wrap-around supported |
+| `minSpend`            | number            | for `spend` kind |
+| `reward`              | `{label,labelAr?,bonusPoints?,rewardRuleId?}` | one of the two required |
+| `maxCompletions`      | int               | 0 / missing = unlimited |
+| `maxPerCustomer`      | int               | default 1 |
+| `completions`         | int               | evaluator increments |
+
+Rule: public read; write server-only via `saveMission` / `deleteMission`.
+
+### `customerMissions/{missionId__uid}`
+
+Per-customer state row. `status ∈ {completed}`.
+
+| field         | type   | notes |
+| ------------- | ------ | ----- |
+| `missionId`   | string | back-ref |
+| `customerUid` | string | back-ref |
+| `status`      | string | `completed` |
+| `completions` | int    | count against `maxPerCustomer` |
+| `firstAt`, `lastAt`, `lastOrderId`, `lastOrderNo` | | audit fields |
+
+Rule: customer reads own; write server-only.
+
+---
+
 ## Migration
 
 `scripts/migrate-orders.mjs` brings pre-Phase-2 orders up to this shape:

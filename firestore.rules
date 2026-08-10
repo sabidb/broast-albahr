@@ -213,6 +213,41 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Phase 13 Wave A — per-customer lifetime-aggregate sentinels
+    // (customers/{uid}/lifetimeAggregates/{orderId}). Written server-side
+    // only; customer reads their own to eyeball tier calculations, staff
+    // reads any for support.
+    match /customers/{uid}/lifetimeAggregates/{orderId} {
+      allow read: if ownsCustomer(uid) || isStaff();
+      allow write: if false;
+    }
+
+    // Phase 13 Wave B — per-customer streak-order sentinels
+    // (customers/{uid}/streakOrders/{orderId}). Same access pattern.
+    match /customers/{uid}/streakOrders/{orderId} {
+      allow read: if ownsCustomer(uid) || isStaff();
+      allow write: if false;
+    }
+
+    // Phase 13 Wave C — missions catalog. PUBLIC READ so the customer app
+    // can render the "Today's missions" card before signing in (kind +
+    // reward.label are already non-sensitive). Owner-only writes through
+    // the saveMission callable — direct writes blocked.
+    match /missions/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Phase 13 Wave C — per-customer mission state
+    // (customerMissions/{missionId__uid}). Customer reads only their own
+    // rows (matched via customerUid field), staff reads any. Writes are
+    // server-only via the mission evaluator.
+    match /customerMissions/{id} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid);
+      allow write: if false;
+    }
+
     // Everything else denied.
     match /{document=**} {
       allow read, write: if false;

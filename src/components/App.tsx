@@ -55,6 +55,11 @@ function AppInner() {
   const [streakTick, setStreakTick] = useState<StreakTick | null>(null);
   const [loyalty, setLoyalty] = useState<LoyaltyState>(loadLoyalty);
   const [toast, setToast] = useState<string | null>(null);
+  // Phase 13 — server-mirrored tier + order-streak + missions.
+  const [serverTier, setServerTier] = useState<any | null>(null);
+  const [orderStreak, setOrderStreak] = useState<any | null>(null);
+  const [missions, setMissions] = useState<any[]>([]);
+  const [missionStates, setMissionStates] = useState<any[]>([]);
   const orderCounter = useRef(1000);
   const isAr = lang === 'ar';
 
@@ -198,6 +203,26 @@ function AppInner() {
       unsub();
     };
   }, [user?.phone, user?.uid, user?.name]);
+
+  // Phase 13 — subscribe to the customer's server-computed tier + order streak
+  // (mirrored on customers/{uid}) and the active mission list. All server
+  // reads gated on rules — a missing snapshot leaves state at null which the
+  // UI treats as "not yet loaded" and falls back to the local ladder.
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsubCust = FB.onMyCustomerChange(user.uid, (d) => {
+      if (!d) return;
+      if (d.tier) setServerTier(d.tier);
+      if (d.streak) setOrderStreak(d.streak);
+    });
+    const unsubMissions = FB.onActiveMissionsChange((ms) => setMissions(ms));
+    const unsubMissionStates = FB.onMyMissionStatesChange(user.uid, (st) => setMissionStates(st));
+    return () => {
+      unsubCust();
+      unsubMissions();
+      unsubMissionStates();
+    };
+  }, [user?.uid]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -394,6 +419,10 @@ function AppInner() {
               loyalty={loyalty}
               streak={streak}
               isAr={isAr}
+              serverTier={serverTier}
+              orderStreak={orderStreak}
+              missions={missions}
+              missionStates={missionStates}
               onToggleLang={() => setLang(isAr ? 'en' : 'ar')}
               onLogout={async () => {
                 await FB.signOut();

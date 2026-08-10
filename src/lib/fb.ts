@@ -739,4 +739,65 @@ export const FB = {
       return null;
     }
   },
+
+  // ── Phase 13 — tiers / streaks / missions ─────────────────────────────
+
+  /**
+   * Live tier config (settings/tierConfig). Falls back to the default ladder
+   * baked in the customer app if the doc is missing so an offline first
+   * visit still renders sensible tier UI.
+   */
+  onTierConfigChange(cb: (tiers: any[] | null) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(doc(db, 'settings', 'tierConfig'), (s) => {
+        const d = s.exists() ? (s.data() as any) : null;
+        cb(d && Array.isArray(d.tiers) ? d.tiers : null);
+      });
+    } catch { return noop; }
+  },
+
+  /** Live streak config. */
+  onStreakConfigChange(cb: (cfg: any | null) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(doc(db, 'settings', 'streakConfig'), (s) => cb(s.exists() ? (s.data() as any) : null));
+    } catch { return noop; }
+  },
+
+  /** Live list of active missions the customer can see (server filters active). */
+  onActiveMissionsChange(cb: (missions: any[]) => void): Unsub {
+    if (!db) return noop;
+    try {
+      const q1 = query(collection(db, 'missions'), where('active', '==', true));
+      return onSnapshot(q1, (s) => cb(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))));
+    } catch { return noop; }
+  },
+
+  /** Live per-customer mission completion state (customerMissions/*). */
+  onMyMissionStatesChange(uid: string, cb: (states: any[]) => void): Unsub {
+    if (!db || !uid) return noop;
+    try {
+      const q1 = query(collection(db, 'customerMissions'), where('customerUid', '==', uid));
+      return onSnapshot(q1, (s) => cb(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))));
+    } catch { return noop; }
+  },
+
+  /** Live customer doc — carries tier + streak snapshots the server writes. */
+  onMyCustomerChange(uid: string, cb: (data: any | null) => void): Unsub {
+    if (!db || !uid) return noop;
+    try {
+      return onSnapshot(doc(db, 'customers', uid), (s) => cb(s.exists() ? (s.data() as any) : null));
+    } catch { return noop; }
+  },
+
+  /** Ask the server to recompute the caller's tier. Useful after a refund undo etc. */
+  async recomputeMyTier(): Promise<any> {
+    if (!fns) return null;
+    try {
+      const call = httpsCallable(fns, 'forceRecomputeTier');
+      const res = await call({});
+      return (res.data as any)?.tier || null;
+    } catch { return null; }
+  },
 };

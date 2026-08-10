@@ -29,7 +29,9 @@ export type TemplateName =
   | 'order.ready' | 'order.completed' | 'order.cancelled' | 'order.refunded'
   | 'reward.issued' | 'reward.expiring' | 'reward.redeemed'
   | 'points.earned' | 'points.redeemed'
-  | 'streak.milestone' | 'campaign.available';
+  | 'streak.milestone' | 'campaign.available'
+  // Phase 13 additions.
+  | 'tier.upgraded' | 'mission.available' | 'mission.completed';
 
 const T = (title: string, body: string, titleAr: string, bodyAr: string, kind = 'order'): Template =>
   ({ title, body, titleAr, bodyAr, kind });
@@ -48,8 +50,11 @@ export const TEMPLATES: Record<TemplateName, (ctx: Record<string, string>) => Te
   'reward.redeemed':    (c) => T('Reward redeemed',         `You used ${c.label} on order #${c.orderNo}.`,                'تم استخدام المكافأة',     `تم استخدام ${c.label} في طلبك #${c.orderNo}.`, 'reward'),
   'points.earned':      (c) => T('Points earned',           `+${c.points} pts on order #${c.orderNo}. Balance: ${c.balance}.`, 'نقاط جديدة',        `+${c.points} نقطة على طلبك #${c.orderNo}. الرصيد: ${c.balance}.`, 'points'),
   'points.redeemed':    (c) => T('Points redeemed',         `-${c.points} pts for ${c.label}. Balance: ${c.balance}.`,    'تم استخدام النقاط',       `-${c.points} نقطة مقابل ${c.label}. الرصيد: ${c.balance}.`, 'points'),
-  'streak.milestone':   (c) => T('Streak milestone!',       `${c.days} days in a row — you unlocked ${c.label}!`,          'إنجاز في السلسلة!',       `${c.days} أيام متتالية — حصلت على ${c.label}!`, 'streak'),
+  'streak.milestone':   (c) => T('Streak milestone!',       `${c.count} orders in a row — you unlocked ${c.label}!`,       'إنجاز في السلسلة!',       `${c.count} طلبات متتالية — حصلت على ${c.label}!`, 'streak'),
   'campaign.available': (c) => T('New offer for you',       c.body || 'Check the app for a limited-time offer.',           'عرض جديد لك',             c.bodyAr || 'افتح التطبيق لعرض حصري لوقت محدود.', 'campaign'),
+  'tier.upgraded':      (c) => T(`Welcome to ${c.tier} ${c.emoji || ''}`.trim(), `You've reached the ${c.tier} tier — new perks unlocked!`, `مرحباً بك في ${c.tier} ${c.emoji || ''}`.trim(), `وصلت إلى مستوى ${c.tier} — امتيازات جديدة!`, 'tier'),
+  'mission.available':  (c) => T('New mission',             c.body || `New mission: ${c.title}. Complete for a reward.`,  'مهمة جديدة',              c.bodyAr || `مهمة جديدة: ${c.titleAr || c.title || ''}. أكملها للمكافأة.`, 'mission'),
+  'mission.completed':  (c) => T('Mission complete!',       `You completed "${c.title}" — ${c.reward || 'reward unlocked'}.`, 'أكملت المهمة!',      `أكملت "${c.titleAr || c.title || ''}" — ${c.rewardAr || c.reward || 'مكافأة'}.`, 'mission'),
 };
 
 export function render(name: TemplateName, ctx: Record<string, string>): Template {

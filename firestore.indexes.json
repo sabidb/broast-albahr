@@ -48,6 +48,14 @@
     { "collectionGroup": "rewardRules", "queryScope": "COLLECTION", "fields": [
       { "fieldPath": "active", "order": "ASCENDING" },
       { "fieldPath": "trigger", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "missions", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "active", "order": "ASCENDING" },
+      { "fieldPath": "kind", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "customerMissions", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "customerUid", "order": "ASCENDING" },
+      { "fieldPath": "status", "order": "ASCENDING" }
     ]}
   ],
   "fieldOverrides": []

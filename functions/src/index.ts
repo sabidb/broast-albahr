@@ -31,7 +31,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, Transaction } from 'firebase-admin/firestore';
 import { priceOrder, toMinor, type LineIn } from './pricing.js';
 import { dispatchNotification, type TemplateName } from './notifications.js';
 import { evaluateForOrder as evaluateRewardsForOrder } from './rewards.js';
@@ -44,6 +44,17 @@ import {
 import {
   awardOrderPoints, reverseOrderPoints, appendLedger,
 } from './points.js';
+import {
+  bumpLifetimeAndRecompute, recomputeTier,
+  type TierRule,
+} from './tiers.js';
+import {
+  evaluateOrderStreak, DEFAULT_STREAK_CONFIG,
+  type StreakConfigDoc,
+} from './streaks.js';
+import {
+  evaluateMissionsForOrder,
+} from './missions.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -535,6 +546,75 @@ async function submitOrderImpl(req: CallableRequest<SubmitOrderData>) {
     try { console.warn('[submitOrder] points award failed:', err?.message || err); } catch {}
   }
 
+  // Phase 13 Wave A — VIP tier bump. Lifetime spend/orders climb by exactly
+  // one order's worth (idempotent on orderId). A tier upgrade fires a
+  // notification once, non-blocking on the return path.
+  let tierChanged = false;
+  let tierAfter: string | undefined;
+  try {
+    const res = await bumpLifetimeAndRecompute({
+      customerUid: uid, orderId: clientOrderId, orderTotal: total,
+    });
+    tierChanged = !!res.changed;
+    tierAfter = res.tier?.tierId;
+    if (res.changed && res.tier) {
+      try {
+        await dispatchNotification({
+          templateName: 'tier.upgraded',
+          ctx: { tier: res.tier.tierName, emoji: res.tier.tierEmoji || '⭐' },
+          phone: userPhone,
+          uid,
+          dedupKey: `tier.upgraded:${uid}:${res.tier.tierId}`,
+          meta: { tierId: res.tier.tierId, orderId: clientOrderId },
+        });
+      } catch (err) { /* non-blocking */ }
+    }
+  } catch (err: any) {
+    try { console.warn('[submitOrder] tier bump failed:', err?.message || err); } catch {}
+  }
+
+  // Phase 13 Wave B — order-streak evaluator. Counts qualifying orders (any
+  // non-cancelled) within the configured window; awards bonus points on
+  // milestone hit via the ledger. Idempotent per orderId via the ledger's
+  // dedupKey. Failure never rolls back the order.
+  let streakAfter: number | undefined;
+  let streakMilestone: string | undefined;
+  try {
+    const res = await evaluateOrderStreak({
+      customerUid: uid, orderId: clientOrderId, orderNo, orderTotal: total, phone: userPhone,
+    });
+    streakAfter = res.streak?.current;
+    if (res.milestoneHit) {
+      streakMilestone = res.milestoneHit.label;
+      try {
+        await dispatchNotification({
+          templateName: 'streak.milestone',
+          ctx: { count: String(res.streak?.current || 0), label: res.milestoneHit.label },
+          phone: userPhone,
+          uid,
+          dedupKey: `streak.milestone:${uid}:${res.milestoneHit.threshold}`,
+          meta: { threshold: res.milestoneHit.threshold, points: res.milestoneHit.bonusPoints || 0 },
+        });
+      } catch (err) { /* non-blocking */ }
+    }
+  } catch (err: any) {
+    try { console.warn('[submitOrder] streak evaluation failed:', err?.message || err); } catch {}
+  }
+
+  // Phase 13 Wave C — mission evaluator. Walks active missions and marks
+  // any newly-completed ones for this customer; the evaluator itself
+  // handles bonus-point payout via the ledger and any reward token mint.
+  try {
+    await evaluateMissionsForOrder({
+      customerUid: uid, orderId: clientOrderId, orderNo, orderTotal: total,
+      branch: branchId, items: (snapshotItems || []).map((i: any) => ({
+        id: String(i.id), qty: Number(i.qty) || 1, name: String(i.name || ''),
+      })), phone: userPhone,
+    });
+  } catch (err: any) {
+    try { console.warn('[submitOrder] mission evaluation failed:', err?.message || err); } catch {}
+  }
+
   return {
     fbId: clientOrderId,
     orderNo,
@@ -542,6 +622,10 @@ async function submitOrderImpl(req: CallableRequest<SubmitOrderData>) {
     existing: false,
     rewardsIssued: issuedRewards.length,
     pointsAwarded,
+    tierChanged,
+    tierAfter,
+    streakAfter,
+    streakMilestone,
   };
 }
 
@@ -756,6 +840,36 @@ export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<R
     }
   } catch (err: any) {
     try { console.warn('[refundOrder] point reversal failed:', err?.message || err); } catch {}
+  }
+
+  // Phase 13 Wave A: shave the refunded amount back off lifetimeSpend and
+  // decrement the order count, then recompute the tier so a customer who
+  // was pushed into a higher tier by a since-refunded order settles back.
+  // The sentinel key mirrors the bump path so we don't double-adjust.
+  try {
+    if (cur.userUid) {
+      const db2 = getFirestore();
+      const custRef = db2.doc(`customers/${cur.userUid}`);
+      const sentinelRef = db2.doc(`customers/${cur.userUid}/lifetimeAggregates/${orderId}`);
+      await db2.runTransaction(async (tx: Transaction) => {
+        const [custSnap, sentSnap] = await Promise.all([tx.get(custRef), tx.get(sentinelRef)]);
+        if (!custSnap.exists) return;
+        // Only reverse if we actually applied the increment before AND we
+        // haven't already reversed. The sentinel is stamped `reversed: true`
+        // on the reverse pass so a retry is a no-op.
+        const s = sentSnap.exists ? (sentSnap.data() as any) : null;
+        if (!s || s.reversed) return;
+        const delta = Math.max(0, Number(s.delta) || 0);
+        tx.update(custRef, {
+          lifetimeSpend: FieldValue.increment(-delta),
+          lifetimeOrders: FieldValue.increment(-1),
+        });
+        tx.update(sentinelRef, { reversed: true, reversedAt: new Date().toISOString() });
+      });
+      await recomputeTier(String(cur.userUid));
+    }
+  } catch (err: any) {
+    try { console.warn('[refundOrder] tier reversal failed:', err?.message || err); } catch {}
   }
 
   return { ok: true, status: 'refunded', amount: refundedAmount };
@@ -1010,4 +1124,141 @@ export const applyOrderOverride = onCall<ApplyOrderOverrideData>(async (req: Cal
     updatedAt: FieldValue.serverTimestamp(),
   });
   return { ok: true, total: nextTotal, appliedAmount: entry.amount };
+});
+
+// ── Phase 13 callables — tiers / streaks / missions ────────────────────
+
+interface SaveTierConfigData { tiers: TierRule[] }
+
+/** Owner-only: replace the tier config wholesale. Sanitized server-side. */
+export const saveTierConfig = onCall<SaveTierConfigData>(async (req: CallableRequest<SaveTierConfigData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const tiers = Array.isArray(req.data?.tiers) ? req.data.tiers : [];
+  if (tiers.length === 0 || tiers.length > 12) {
+    throw new HttpsError('invalid-argument', 'tiers must be a 1–12 entry array.');
+  }
+  await getFirestore().doc('settings/tierConfig').set({
+    tiers, updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, tiers: tiers.length };
+});
+
+interface RecomputeTierData { customerUid?: string }
+
+/** Force a tier recompute for one customer (self by default, staff for any). */
+export const forceRecomputeTier = onCall<RecomputeTierData>(async (req: CallableRequest<RecomputeTierData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const target = String(req.data?.customerUid || req.auth.uid).trim();
+  if (target !== req.auth.uid) {
+    const caller = await readCallerRole(req.auth.uid);
+    if (caller.role !== 'owner' && caller.role !== 'branch') {
+      throw new HttpsError('permission-denied', 'Staff only for other customers.');
+    }
+  }
+  const snap = await recomputeTier(target);
+  return { ok: true, tier: snap };
+});
+
+interface SaveStreakConfigData { config: StreakConfigDoc }
+
+/** Owner-only: replace the streak config. */
+export const saveStreakConfig = onCall<SaveStreakConfigData>(async (req: CallableRequest<SaveStreakConfigData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const c = req.data?.config;
+  if (!c || typeof c !== 'object') throw new HttpsError('invalid-argument', 'config required.');
+  await getFirestore().doc('settings/streakConfig').set({
+    enabled: c.enabled !== false,
+    windowDays: Math.max(1, Math.min(365, Math.floor(Number(c.windowDays) || DEFAULT_STREAK_CONFIG.windowDays))),
+    minOrders: Math.max(1, Math.min(100, Math.floor(Number(c.minOrders) || DEFAULT_STREAK_CONFIG.minOrders!))),
+    countRefunded: !!c.countRefunded,
+    milestones: Array.isArray(c.milestones)
+      ? c.milestones.slice(0, 20).map((m) => ({
+          threshold: Math.max(1, Math.floor(Number(m.threshold) || 0)),
+          label: String(m.label || '').slice(0, 60),
+          labelAr: m.labelAr ? String(m.labelAr).slice(0, 60) : undefined,
+          bonusPoints: Math.max(0, Math.floor(Number(m.bonusPoints) || 0)),
+        })).filter((m) => m.threshold > 0 && m.label)
+      : DEFAULT_STREAK_CONFIG.milestones,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+interface SaveMissionData {
+  mission: {
+    id?: string;
+    title: string; titleAr?: string;
+    description?: string; descriptionAr?: string;
+    kind: 'combo' | 'quiet_hours' | 'product' | 'spend';
+    active?: boolean;
+    fromISO?: string; toISO?: string;
+    branches?: string[];
+    itemIds?: string[]; itemQty?: number;
+    quietFromHHMM?: string; quietToHHMM?: string;
+    minSpend?: number;
+    reward: { bonusPoints?: number; rewardRuleId?: string; label: string; labelAr?: string };
+    maxCompletions?: number; maxPerCustomer?: number;
+  };
+}
+
+/** Owner-only: upsert a mission. Server generates the id when the caller omits it. */
+export const saveMission = onCall<SaveMissionData>(async (req: CallableRequest<SaveMissionData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const m = req.data?.mission;
+  if (!m || !m.title || !m.kind || !m.reward) {
+    throw new HttpsError('invalid-argument', 'mission.title / .kind / .reward required.');
+  }
+  const db = getFirestore();
+  const id = String(m.id || db.collection('missions').doc().id).slice(0, 60);
+  const payload: Record<string, unknown> = {
+    id,
+    title: String(m.title).slice(0, 80),
+    kind: m.kind,
+    active: m.active !== false,
+    reward: {
+      label: String(m.reward.label || 'Reward').slice(0, 60),
+      ...(m.reward.labelAr ? { labelAr: String(m.reward.labelAr).slice(0, 60) } : {}),
+      ...(m.reward.bonusPoints ? { bonusPoints: Math.floor(Number(m.reward.bonusPoints)) } : {}),
+      ...(m.reward.rewardRuleId ? { rewardRuleId: String(m.reward.rewardRuleId).slice(0, 60) } : {}),
+    },
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (m.titleAr) payload.titleAr = String(m.titleAr).slice(0, 80);
+  if (m.description) payload.description = String(m.description).slice(0, 300);
+  if (m.descriptionAr) payload.descriptionAr = String(m.descriptionAr).slice(0, 300);
+  if (m.fromISO) payload.fromISO = String(m.fromISO);
+  if (m.toISO) payload.toISO = String(m.toISO);
+  if (Array.isArray(m.branches)) payload.branches = m.branches.map((s) => String(s)).slice(0, 20);
+  if (Array.isArray(m.itemIds)) payload.itemIds = m.itemIds.map((s) => String(s)).slice(0, 30);
+  if (m.itemQty) payload.itemQty = Math.max(1, Math.floor(Number(m.itemQty)));
+  if (m.quietFromHHMM) payload.quietFromHHMM = String(m.quietFromHHMM).slice(0, 5);
+  if (m.quietToHHMM) payload.quietToHHMM = String(m.quietToHHMM).slice(0, 5);
+  if (m.minSpend) payload.minSpend = Number(m.minSpend);
+  if (m.maxCompletions) payload.maxCompletions = Math.max(1, Math.floor(Number(m.maxCompletions)));
+  if (m.maxPerCustomer) payload.maxPerCustomer = Math.max(1, Math.floor(Number(m.maxPerCustomer)));
+  const existing = await db.doc(`missions/${id}`).get();
+  if (!existing.exists) {
+    payload.createdAt = FieldValue.serverTimestamp();
+    payload.completions = 0;
+  }
+  await db.doc(`missions/${id}`).set(payload, { merge: true });
+  return { ok: true, id };
+});
+
+interface DeleteMissionData { id: string }
+
+export const deleteMission = onCall<DeleteMissionData>(async (req: CallableRequest<DeleteMissionData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const id = String(req.data?.id || '').trim();
+  if (!id) throw new HttpsError('invalid-argument', 'id required.');
+  await getFirestore().doc(`missions/${id}`).delete();
+  return { ok: true };
 });
