@@ -1,29 +1,54 @@
 {
   "indexes": [
-    {
-      "collectionGroup": "orders",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userPhone", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "orders",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "branch", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "items",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "read", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    }
+    { "collectionGroup": "orders", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "userPhone", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ]},
+    { "collectionGroup": "orders", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "branch", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ]},
+    { "collectionGroup": "items", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "read", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ]},
+    { "collectionGroup": "rewards", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "ruleId", "order": "ASCENDING" },
+      { "fieldPath": "customerUid", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "rewards", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "customerUid", "order": "ASCENDING" },
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "issuedAt", "order": "DESCENDING" }
+    ]},
+    { "collectionGroup": "rewards", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "expiresAt", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "rewardTokens", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "customerUid", "order": "ASCENDING" },
+      { "fieldPath": "status", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "rewardTokens", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "expiresAt", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "rewardTokens", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "holdUntil", "order": "ASCENDING" }
+    ]},
+    { "collectionGroup": "pointsLedger", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "customerUid", "order": "ASCENDING" },
+      { "fieldPath": "at", "order": "DESCENDING" }
+    ]},
+    { "collectionGroup": "notifications_log", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "phone", "order": "ASCENDING" },
+      { "fieldPath": "claimedAt", "order": "DESCENDING" }
+    ]},
+    { "collectionGroup": "rewardRules", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "active", "order": "ASCENDING" },
+      { "fieldPath": "trigger", "order": "ASCENDING" }
+    ]}
   ],
   "fieldOverrides": []
 }
