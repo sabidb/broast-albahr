@@ -171,6 +171,13 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
+    // Phase 9: dispatch audit log. Only server-side callables write via the
+    // Admin SDK (dedup + push outcome). Staff can read to debug delivery.
+    match /notifications_log/{key} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     // Everything else denied.
     match /{document=**} {
       allow read, write: if false;

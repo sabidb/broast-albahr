@@ -305,6 +305,27 @@ export const FB = {
     return FB.updateOrderStatus(orderId, 'cancelled', reason);
   },
 
+  /**
+   * Register (or refresh) an FCM device token with the customer profile
+   * so server-side dispatchNotification can push to them. No-op if the
+   * browser hasn't granted permission or the VAPID key isn't configured
+   * yet — the in-app inbox always works either way.
+   */
+  async registerFcmToken(token: string): Promise<{ ok: boolean; error?: string }> {
+    if (!fns) return { ok: false, error: 'functions-unavailable' };
+    if (!token) return { ok: false, error: 'no-token' };
+    try {
+      const call = httpsCallable<{ token: string }, { ok: boolean }>(fns, 'registerFcmToken');
+      await call({ token });
+      return { ok: true };
+    } catch (err: any) {
+      const code = err?.code || err?.name || 'unknown';
+      const msg = err?.details?.message || err?.message || String(err);
+      try { console.error('[FB.registerFcmToken] failed:', code, msg); } catch {}
+      return { ok: false, error: `${code}: ${msg}` };
+    }
+  },
+
   async saveCustomer(d: {
     uid: string;
     name: string;

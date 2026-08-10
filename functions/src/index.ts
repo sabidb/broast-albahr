@@ -32,6 +32,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { priceOrder, toMinor, type LineIn } from './pricing.js';
+import { dispatchNotification, type TemplateName } from './notifications.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -498,6 +499,29 @@ export const updateOrderStatus = onCall<UpdateOrderStatusData>(async (req: Calla
   if (reason && nextStatus === 'cancelled') patch.declineReason = reason;
 
   await ref.update(patch);
+
+  // Phase 9: dispatch a matching in-app + push notification. Template key is
+  // the status verbatim; dedupKey combines orderId + status so a re-fire of
+  // the same transition is a no-op.
+  const templateName = ('order.' + (nextStatus === 'done' ? 'completed' : nextStatus)) as TemplateName;
+  const phone = String(cur.userPhone || '');
+  const uid = String(cur.userUid || '');
+  if (phone && templateName in (await import('./notifications.js')).TEMPLATES) {
+    try {
+      await dispatchNotification({
+        templateName,
+        ctx: { orderNo: String(cur.orderNo || ''), reason: reason || '' },
+        phone,
+        uid: uid || undefined,
+        dedupKey: `order:${orderId}:${nextStatus}`,
+        meta: { orderId, orderNo: cur.orderNo, status: nextStatus },
+      });
+    } catch (err: any) {
+      // A notification failure must not roll back the status write — the
+      // customer still sees the status change on their tracker.
+      try { console.warn('[updateOrderStatus] notification dispatch failed:', err?.message || err); } catch {}
+    }
+  }
   return { ok: true, status: nextStatus, previous: curStatus };
 });
 
@@ -567,7 +591,49 @@ export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<R
       by: req.auth.uid,
     },
   });
+  // Phase 9: refund notification
+  try {
+    const phone = String(cur.userPhone || '');
+    if (phone) {
+      await dispatchNotification({
+        templateName: 'order.refunded',
+        ctx: { orderNo: String(cur.orderNo || ''), amount: refundedAmount.toFixed(2) },
+        phone,
+        uid: cur.userUid ? String(cur.userUid) : undefined,
+        dedupKey: `order:${orderId}:refunded`,
+        meta: { orderId, orderNo: cur.orderNo, refundAmount: refundedAmount },
+      });
+    }
+  } catch (err: any) {
+    try { console.warn('[refundOrder] notification dispatch failed:', err?.message || err); } catch {}
+  }
   return { ok: true, status: 'refunded', amount: refundedAmount };
+});
+
+interface RegisterFcmTokenData {
+  token: string;
+}
+
+/**
+ * Register (or refresh) a customer's FCM device token so the notification
+ * dispatcher can push to them. Tokens are stored as a de-duplicated array on
+ * customers/{uid}.fcmTokens; the singular `fcmToken` mirrors the most recent
+ * one for backwards compat.
+ */
+export const registerFcmToken = onCall<RegisterFcmTokenData>(async (req: CallableRequest<RegisterFcmTokenData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const token = String(req.data?.token || '').trim();
+  if (!token || token.length > 500) throw new HttpsError('invalid-argument', 'token required (max 500 chars).');
+  const db = getFirestore();
+  await db.doc(`customers/${req.auth.uid}`).set(
+    {
+      fcmToken: token,
+      fcmTokens: FieldValue.arrayUnion(token),
+      fcmUpdatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return { ok: true };
 });
 
 interface ApplyOrderOverrideData {
