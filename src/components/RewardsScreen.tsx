@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import CountUp from './CountUp';
 import {
@@ -10,6 +11,7 @@ import {
   type Reward,
 } from '../lib/loyalty';
 import { weekFlames, type StreakState } from '../lib/streak';
+import { FB } from '../lib/fb';
 
 function Ring({ pct, color }: { pct: number; color: string }) {
   const r = 34;
@@ -38,17 +40,41 @@ export default function RewardsScreen({
   loyalty,
   streak,
   isAr,
+  uid,
   onRedeem,
 }: {
   loyalty: LoyaltyState;
   streak: StreakState;
   isAr: boolean;
+  /** Phase 11/12 — customer uid to fetch server-side tokens + ledger. */
+  uid?: string;
   onRedeem: (r: Reward) => void;
 }) {
   const tier = tierFor(loyalty.lifetime);
   const nxt = nextTier(loyalty.lifetime);
   const pct = tierProgress(loyalty.lifetime);
   const flames = weekFlames(streak.count);
+  // Phase 11 — the customer's AVAILABLE reward codes (issued by the
+  // server-side reward engine). Fetched on mount so the screen doesn't need
+  // an auth state change to render them.
+  const [tokens, setTokens] = useState<Array<{ code: string; label: string; expiresAt: string; kind?: string; value?: number }>>([]);
+  // Phase 12 — server-side points balance, preferred over the localStorage
+  // cache when it's non-zero (the ledger is the source of truth).
+  const [serverBalance, setServerBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!uid) return;
+    let alive = true;
+    (async () => {
+      const [t, b] = await Promise.all([FB.getMyRewardTokens(uid), FB.getMyPointsBalance(uid)]);
+      if (!alive) return;
+      setTokens(t);
+      if (b > 0) setServerBalance(b);
+    })();
+    return () => { alive = false; };
+  }, [uid]);
+
+  const shownPoints = serverBalance != null ? serverBalance : loyalty.points;
 
   // parallax on scroll
   const { scrollY } = useScroll();
@@ -70,7 +96,7 @@ export default function RewardsScreen({
           <div>
             <div className="text-[13px] font-bold opacity-90">{isAr ? 'رصيد نقاطك' : 'Your points'}</div>
             <div className="font-display text-[44px] font-black leading-none">
-              <CountUp value={loyalty.points} />
+              <CountUp value={shownPoints} />
             </div>
 
             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-1 text-[12px] font-black">
@@ -126,6 +152,53 @@ export default function RewardsScreen({
         </div>
       </div>
 
+      {/* Phase 11 — reward codes issued by the server for this customer.
+          Each code is a 12-char token that redeems on the next order via
+          the Enter Code field on Checkout. Hidden entirely when there are
+          none (avoids an empty section for a fresh customer). */}
+      {tokens.length > 0 && (
+        <>
+          <div className="mb-2 mt-6 text-[15px] font-black text-brand-ink">
+            🎁 {isAr ? 'رموزك المتاحة' : 'Your reward codes'}
+          </div>
+          <div className="flex flex-col gap-2">
+            {tokens.map((t) => {
+              const expDays = t.expiresAt
+                ? Math.max(0, Math.floor((new Date(t.expiresAt).getTime() - Date.now()) / 86400000))
+                : null;
+              return (
+                <div
+                  key={t.code}
+                  className="flex items-center gap-3 rounded-2xl border-2 border-dashed border-brand-red bg-brand-red/5 p-3"
+                >
+                  <div className="text-[26px]">🎁</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-[15px] font-black tracking-[2px] text-brand-red">{t.code}</div>
+                    <div className="mt-0.5 text-[12px] font-bold text-brand-ink2">{t.label}</div>
+                    {expDays != null && (
+                      <div className="text-[10px] font-bold text-brand-muted">
+                        {expDays > 0
+                          ? isAr ? `تنتهي خلال ${expDays} يوم` : `expires in ${expDays} day${expDays === 1 ? '' : 's'}`
+                          : isAr ? 'تنتهي اليوم' : 'expires today'}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      try { navigator.clipboard?.writeText(t.code); } catch {}
+                    }}
+                    className="rounded-xl bg-brand-red/10 px-3 py-1.5 text-[11px] font-black text-brand-red"
+                    title={isAr ? 'نسخ' : 'Copy'}
+                  >
+                    {isAr ? 'نسخ' : 'Copy'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {/* redeem */}
       <div className="mb-2 mt-6 flex items-center justify-between">
         <div className="text-[15px] font-black text-brand-ink">{isAr ? 'استبدل نقاطك 🎁' : 'Redeem points 🎁'}</div>
@@ -133,7 +206,7 @@ export default function RewardsScreen({
       </div>
       <div className="grid grid-cols-2 gap-3">
         {REWARDS.map((r, i) => {
-          const can = loyalty.points >= r.cost;
+          const can = shownPoints >= r.cost;
           return (
             <motion.div
               key={r.id}
@@ -160,7 +233,7 @@ export default function RewardsScreen({
                   boxShadow: can ? '0 8px 20px rgba(225,6,0,0.3)' : 'none',
                 }}
               >
-                {can ? (isAr ? 'استبدال' : 'Redeem') : isAr ? `يحتاج ${r.cost - loyalty.points}` : `Need ${r.cost - loyalty.points}`}
+                {can ? (isAr ? 'استبدال' : 'Redeem') : isAr ? `يحتاج ${r.cost - shownPoints}` : `Need ${r.cost - shownPoints}`}
               </motion.button>
             </motion.div>
           );

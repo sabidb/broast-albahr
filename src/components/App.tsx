@@ -384,7 +384,7 @@ function AppInner() {
           {tab === 'menu' && (
             <MenuStep menu={menuForBranch} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
           )}
-          {tab === 'rewards' && <RewardsScreen loyalty={loyalty} streak={streak} isAr={isAr} onRedeem={onRedeem} />}
+          {tab === 'rewards' && <RewardsScreen loyalty={loyalty} streak={streak} isAr={isAr} uid={user?.uid} onRedeem={onRedeem} />}
           {tab === 'orders' && (
             <OrdersScreen orders={orders} isAr={isAr} onReorder={() => setTab('menu')} onTrack={(o) => setTrackOrder(o)} />
           )}

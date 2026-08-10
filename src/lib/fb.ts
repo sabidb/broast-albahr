@@ -336,6 +336,71 @@ export const FB = {
   },
 
   /**
+   * Phase 11 — read the customer's live reward tokens (AVAILABLE only).
+   * Returns the tokens keyed on their uid, most recent first.
+   */
+  async getMyRewardTokens(uid: string): Promise<Array<{ code: string; label: string; expiresAt: string; kind?: string; value?: number }>> {
+    if (!db || !uid) return [];
+    try {
+      const q = query(
+        collection(db, 'rewardTokens'),
+        where('customerUid', '==', uid),
+        where('status', '==', 'available'),
+      );
+      const snap = await getDocs(q);
+      const rows = snap.docs.map((d) => ({ code: d.id, ...(d.data() as any) }))
+        .filter((t) => !t.expiresAt || new Date(t.expiresAt).getTime() > Date.now())
+        .sort((a, b) => (b.issuedAt || '').localeCompare(a.issuedAt || ''));
+      return rows.map((t) => ({ code: t.code, label: t.label || 'Reward', expiresAt: t.expiresAt, kind: t.kind, value: t.value }));
+    } catch (err) {
+      try { console.error('[FB.getMyRewardTokens] read failed', err); } catch {}
+      return [];
+    }
+  },
+
+  /**
+   * Phase 12 — recent ledger entries for this customer (newest first).
+   * Used by the Rewards screen "Activity" section to show server-truth
+   * points history instead of the localStorage cache.
+   */
+  async getMyPointsLedger(uid: string, limitN = 20): Promise<Array<{ delta: number; reason: string; at: string; source: string }>> {
+    if (!db || !uid) return [];
+    try {
+      const q = query(
+        collection(db, 'pointsLedger'),
+        where('customerUid', '==', uid),
+        orderBy('at', 'desc'),
+        limit(limitN),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => {
+        const x = d.data() as any;
+        return { delta: Number(x.delta) || 0, reason: String(x.reason || ''), at: String(x.at || ''), source: String(x.source || '') };
+      });
+    } catch (err) {
+      try { console.error('[FB.getMyPointsLedger] read failed', err); } catch {}
+      return [];
+    }
+  },
+
+  /**
+   * Phase 12 — read the server-side points balance from customers/{uid}.
+   * The Rewards screen prefers this over the localStorage cache when both
+   * exist (the ledger is the source of truth).
+   */
+  async getMyPointsBalance(uid: string): Promise<number> {
+    if (!db || !uid) return 0;
+    try {
+      const s = await getDoc(doc(db, 'customers', uid));
+      if (!s.exists()) return 0;
+      const n = Number((s.data() as any).points);
+      return Number.isFinite(n) ? n : 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
    * Phase 12 — redeem points for a reward. Server-side: debits the ledger
    * and mints a Phase-11 token (12-char code + QR) in one call. The customer
    * uses the returned code on their next order.

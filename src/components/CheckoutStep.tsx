@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { VALID_COUPONS, PAYMENT_METHODS, PICKUP_SLOTS, type Branch, type MenuItem } from '../lib/data';
 import { computeTotals, money } from '../lib/utils';
+import { FB } from '../lib/fb';
 import ItemImage from './ItemImage';
 import type { Cart } from './MenuStep';
 
@@ -35,6 +36,14 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
   const [coupon, setCoupon] = useState('');
   const [applied, setApplied] = useState<{ code: string; c: (typeof VALID_COUPONS)[string] } | null>(null);
   const [couponMsg, setCouponMsg] = useState('');
+  // Phase 11 — 12-char reward code / QR payload. Validated via callable,
+  // reserved when the customer taps Confirm. The reserved code is passed
+  // to submitOrder as rewardToken so the server can flip it RESERVED →
+  // REDEEMED atomically with the order write.
+  const [rewardInput, setRewardInput] = useState('');
+  const [rewardChecking, setRewardChecking] = useState(false);
+  const [rewardApplied, setRewardApplied] = useState<{ code: string; label: string } | null>(null);
+  const [rewardMsg, setRewardMsg] = useState('');
   // Stable per-submission id so a retried tap doesn't create a duplicate order.
   const clientOrderIdRef = useRef<string>(
     (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
@@ -61,8 +70,71 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
     }
   };
 
-  const placeOrder = () => {
+  const REWARD_ERR: Record<string, { en: string; ar: string }> = {
+    'not-found':       { en: 'Code not recognised.',           ar: 'الرمز غير معروف.' },
+    'wrong-customer':  { en: 'This code belongs to another account.', ar: 'الرمز يخص حساب آخر.' },
+    'not-available':   { en: 'This code was already used.',    ar: 'تم استخدام هذا الرمز.' },
+    'expired':         { en: 'This code has expired.',         ar: 'انتهت صلاحية الرمز.' },
+    'below-min-order': { en: 'Order total is below the minimum for this reward.', ar: 'المبلغ أقل من الحد الأدنى لهذه المكافأة.' },
+    'wrong-branch':    { en: 'This code is for another branch.', ar: 'الرمز لفرع آخر.' },
+    'wrong-product':   { en: 'This code needs a specific product in your cart.', ar: 'يتطلب الرمز منتجاً معيناً في السلة.' },
+  };
+
+  const applyReward = async () => {
+    const raw = rewardInput.trim().toUpperCase();
+    if (!raw) return;
+    setRewardChecking(true);
+    setRewardMsg('');
+    try {
+      const res = await FB.validateRewardCode({
+        codeOrPayload: raw,
+        branchId: branch,
+        orderTotal: totals.total,
+      });
+      if (res && res.ok) {
+        const label = (res.reward && (res.reward.label || res.reward.labelAr)) || (isAr ? 'مكافأة' : 'Reward');
+        setRewardApplied({ code: res.code, label });
+        setRewardMsg(isAr ? `✅ تم تطبيق: ${label}` : `✅ Applied: ${label}`);
+      } else {
+        setRewardApplied(null);
+        const key = res && res.error ? String(res.error) : 'not-found';
+        const msg = REWARD_ERR[key] || REWARD_ERR['not-found'];
+        setRewardMsg(isAr ? `❌ ${msg.ar}` : `❌ ${msg.en}`);
+      }
+    } catch (err: any) {
+      setRewardApplied(null);
+      setRewardMsg(isAr ? '❌ تعذّر التحقق من الرمز' : '❌ Could not verify the code');
+    } finally {
+      setRewardChecking(false);
+    }
+  };
+
+  const placeOrder = async () => {
     if (!branch) return alert(isAr ? 'اختر الفرع' : 'Please select a branch');
+    // Reserve the reward token to this order before we submit. If the
+    // reservation fails now, we don't send the token to the server — the
+    // customer still gets to place the order and the token stays AVAILABLE
+    // for a later attempt.
+    let rewardToken = '';
+    if (rewardApplied) {
+      try {
+        const res = await FB.reserveRewardCode({
+          codeOrPayload: rewardApplied.code,
+          orderId: clientOrderIdRef.current,
+          branchId: branch,
+          orderTotal: totals.total,
+        });
+        if (res && res.ok) {
+          rewardToken = rewardApplied.code;
+        } else {
+          setRewardMsg(isAr ? '❌ تعذّر حجز الرمز — حاول مجدداً' : '❌ Could not reserve the code — try again');
+          setRewardApplied(null);
+          return;
+        }
+      } catch {
+        // fall through; without a token the order still lands
+      }
+    }
     const branchObj = branches.find((b) => b.id === branch) || branches[0];
     const payload = {
       branch,
@@ -73,6 +145,7 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
       paymentMethod: pay,
       note,
       couponCode: applied?.code || '',
+      rewardToken,
       user,
       isAr,
       clientOrderId: clientOrderIdRef.current,
@@ -217,6 +290,56 @@ export default function CheckoutStep({ cart, user, onBack, onOrderPlaced, isAr, 
           <div className="mt-2 text-[11px] font-bold text-brand-muted">
             {isAr ? 'جرّب: ALBAHR10 · WELCOME5 · BROAST15' : 'Try: ALBAHR10 · WELCOME5 · BROAST15'}
           </div>
+        </Section>
+
+        {/* Phase 11 — reward code / QR entry. Codes are 12-char server-issued
+            tokens; the input accepts either the bare code or the full QR
+            payload (code.mac). Validate button previews eligibility; the
+            actual reservation happens when the customer taps Confirm. */}
+        <Section>
+          <span className={label}>🎁 {isAr ? 'رمز المكافأة' : 'REWARD CODE'}</span>
+          {rewardApplied ? (
+            <div className="flex items-center justify-between rounded-2xl border-2 border-brand-red/30 bg-brand-red/8 px-4 py-3">
+              <div>
+                <div className="mono text-sm font-black text-brand-red">✅ {rewardApplied.code}</div>
+                <div className="text-xs font-bold text-brand-red/80">{rewardApplied.label}</div>
+              </div>
+              <button
+                onClick={() => {
+                  setRewardApplied(null);
+                  setRewardInput('');
+                  setRewardMsg('');
+                }}
+                className="rounded-xl bg-brand-red/10 px-3 py-1.5 text-xs font-black text-brand-red"
+              >
+                {isAr ? 'إزالة' : 'Remove'}
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                value={rewardInput}
+                onChange={(e) => {
+                  setRewardInput(e.target.value.toUpperCase());
+                  setRewardMsg('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && !rewardChecking && applyReward()}
+                placeholder={isAr ? '12 حرفاً' : '12-character code'}
+                className="flex-1 rounded-2xl border-2 border-brand-line bg-white px-4 py-3 font-mono text-[13px] font-bold uppercase tracking-widest text-brand-ink outline-none focus:border-brand-red"
+                maxLength={80}
+              />
+              <button
+                onClick={applyReward}
+                disabled={rewardChecking || rewardInput.trim().length < 12}
+                className="rounded-2xl bg-brand-red px-5 text-[13px] font-black text-white shadow-red disabled:opacity-50"
+              >
+                {rewardChecking ? '…' : (isAr ? 'تطبيق' : 'Apply')}
+              </button>
+            </div>
+          )}
+          {rewardMsg && !rewardApplied && (
+            <div className="mt-1.5 text-xs font-bold text-brand-red">{rewardMsg}</div>
+          )}
         </Section>
 
         <Section>
