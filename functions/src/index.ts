@@ -569,3 +569,68 @@ export const refundOrder = onCall<RefundOrderData>(async (req: CallableRequest<R
   });
   return { ok: true, status: 'refunded', amount: refundedAmount };
 });
+
+interface ApplyOrderOverrideData {
+  orderId: string;
+  amount: number;
+  reason: string;
+}
+
+/**
+ * Owner-only comp / discount override for an already-placed order. Adjusts
+ * the persisted `total` server-side — Phase 5 rules block direct client
+ * writes to `total` / `totals`, so this callable is the only path.
+ *
+ * The override is appended to an `overrides` array so history is retained
+ * and never rewrites the immutable line snapshots stored under `items`.
+ * `total` shrinks by the comp amount (clamped at 0); `totals.discount`
+ * grows by the same amount so reports keep balance.
+ */
+export const applyOrderOverride = onCall<ApplyOrderOverrideData>(async (req: CallableRequest<ApplyOrderOverrideData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const orderId = String(req.data?.orderId || '').trim();
+  const amount = Number(req.data?.amount);
+  const reason = String(req.data?.reason || '').trim();
+  if (!orderId || orderId.length > 128) throw new HttpsError('invalid-argument', 'orderId required.');
+  if (!Number.isFinite(amount) || amount <= 0) throw new HttpsError('invalid-argument', 'amount must be > 0.');
+  if (!reason || reason.length > 300) throw new HttpsError('invalid-argument', 'reason required (1–300 chars).');
+
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') {
+    throw new HttpsError('permission-denied', 'Only owners can apply an override.');
+  }
+
+  const db = getFirestore();
+  const ref = db.doc(`orders/${orderId}`);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Order not found.');
+  const cur = snap.data() as any;
+  const curTotal = Number(cur.total) || 0;
+  const curOverrides: any[] = Array.isArray(cur.overrides) ? cur.overrides : [];
+  const alreadyOff = curOverrides.reduce((s, o) => s + (Number(o?.amount) || 0), 0);
+  // Refuse to over-comp: cumulative comp cannot exceed the pre-comp total
+  // (curTotal + alreadyOff = the total before any comps ever landed).
+  const preCompTotal = curTotal + alreadyOff;
+  const clamped = Math.min(amount, Math.max(0, preCompTotal - alreadyOff));
+  if (clamped <= 0) throw new HttpsError('failed-precondition', 'Nothing left to comp on this order.');
+
+  const roundSar = (n: number) => Math.round(n * 100) / 100;
+  const entry = {
+    amount: roundSar(clamped),
+    reason: reason.slice(0, 300),
+    by: req.auth.uid,
+    at: new Date().toISOString(),
+  };
+  const nextTotal = roundSar(Math.max(0, curTotal - clamped));
+  const curTotals = (cur.totals && typeof cur.totals === 'object') ? cur.totals : {};
+  const nextDiscount = roundSar((Number(curTotals.discount) || 0) + clamped);
+  const nextTotals = { ...curTotals, discount: nextDiscount, total: nextTotal };
+
+  await ref.update({
+    total: nextTotal,
+    totals: nextTotals,
+    overrides: FieldValue.arrayUnion(entry),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, total: nextTotal, appliedAmount: entry.amount };
+});
