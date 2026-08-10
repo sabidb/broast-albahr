@@ -14,7 +14,7 @@
     "migrate:orders": "node scripts/migrate-orders.mjs",
     "migrate:orders:dry": "node scripts/migrate-orders.mjs --dry-run",
     "seed:branches": "node scripts/seed-branches.mjs",
-    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage:rules",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
     "deploy:functions": "npm --prefix functions run build && firebase deploy --only functions",
     "deploy:all": "npm run deploy:rules && npm run deploy:functions",
     "secret:set:reward-key": "firebase functions:secrets:set REWARD_TOKEN_SIGNING_KEY"

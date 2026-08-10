@@ -86,7 +86,7 @@ Then merge to `main`.
 
 Under the hood:
 
-1. `firebase deploy --only firestore:rules,firestore:indexes,storage:rules` — pushes Firestore rules (Phase 5-12 lockdown), composite indexes (Phase 6+ collections), and Storage rules.
+1. `firebase deploy --only firestore:rules,firestore:indexes,storage` — pushes Firestore rules (Phase 5-12 lockdown), composite indexes (Phase 6+ collections), and Storage rules. (Use `storage` alone, not `storage:rules` — the colon form requires a named target, which we don't have.)
 2. `npm --prefix functions run build` — compiles `functions/src/*.ts` to `functions/lib/*.js`.
 3. `firebase deploy --only functions` — deploys every callable:
    - `setRole`, `whoami` (Wave 2.1)
