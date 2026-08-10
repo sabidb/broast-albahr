@@ -93,9 +93,9 @@ export default function RewardsScreen({
   }, [uid, reloadTick]);
 
   const shownPoints    = serverBalance  != null ? serverBalance  : loyalty.points;
-  const shownLifetime  = serverLifetime != null && serverLifetime > shownLifetime
+  const shownLifetime  = serverLifetime != null && serverLifetime > loyalty.lifetime
     ? serverLifetime
-    : shownLifetime;
+    : loyalty.lifetime;
   const tier = tierFor(shownLifetime);
   const nxt  = nextTier(shownLifetime);
   const pct  = tierProgress(shownLifetime);

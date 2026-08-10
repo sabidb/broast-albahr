@@ -35,7 +35,8 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
   // the customer doesn't have to bounce back to the menu just to drop a
   // line, and per-item notes ("no onions", "extra spicy") land on the
   // kitchen ticket without leaving the checkout flow.
-  const bumpQty = (id: string, delta: number) => {
+  const bumpQty = (rawId: string | number, delta: number) => {
+    const id = String(rawId);
     setCart((prev) => {
       const it = prev[id];
       if (!it) return prev;
@@ -46,14 +47,16 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
       return next;
     });
   };
-  const setItemNote = (id: string, note: string) => {
+  const setItemNote = (rawId: string | number, note: string) => {
+    const id = String(rawId);
     setCart((prev) => {
       const it = prev[id];
       if (!it) return prev;
       return { ...prev, [id]: { ...it, note } };
     });
   };
-  const removeItem = (id: string) => {
+  const removeItem = (rawId: string | number) => {
+    const id = String(rawId);
     setCart((prev) => {
       const next = { ...prev };
       delete next[id];
