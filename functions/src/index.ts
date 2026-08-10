@@ -1369,6 +1369,60 @@ export const getMyReferralCode = onCall(async (req) => {
   }
 });
 
+// ── Customer 360° admin panel — server-authorized writes ─────────────
+// Staff notes and profile edits ride through callables so the panel's
+// mutations get the same rules gate as points and orders. Notes append
+// server-side (arrayUnion), profile edits pass through a whitelist so a
+// rogue client can't overwrite tier/points fields, and both write with
+// serverTimestamp so cross-device viewers see the same clock.
+
+interface AddCustomerNoteData { customerUid: string; text: string }
+export const addCustomerNote = onCall<AddCustomerNoteData>(async (req: CallableRequest<AddCustomerNoteData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (!(caller.role === 'owner' || caller.role === 'branch' || caller.role === 'staff'))
+    throw new HttpsError('permission-denied', 'Staff only.');
+  const uid  = String(req.data?.customerUid || '').trim();
+  const text = String(req.data?.text || '').trim().slice(0, 500);
+  if (!uid || !text) throw new HttpsError('invalid-argument', 'customerUid + text required.');
+  const entry = {
+    text,
+    staffUid: req.auth.uid,
+    staffName: (req.auth.token && (req.auth.token.name || req.auth.token.email)) || '',
+    at: new Date().toISOString(),
+  };
+  await getFirestore().doc(`customers/${uid}`).set(
+    { notes: FieldValue.arrayUnion(entry), updatedAt: FieldValue.serverTimestamp() },
+    { merge: true },
+  );
+  return { ok: true, entry };
+});
+
+interface UpdateCustomerInfoData {
+  customerUid: string;
+  patch: { name?: string; email?: string; dob?: string; lang?: string; prefBranch?: string; blocked?: boolean };
+}
+export const updateCustomerInfo = onCall<UpdateCustomerInfoData>(async (req: CallableRequest<UpdateCustomerInfoData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (!(caller.role === 'owner' || caller.role === 'branch'))
+    throw new HttpsError('permission-denied', 'Owner or branch manager only.');
+  const uid = String(req.data?.customerUid || '').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'customerUid required.');
+  const raw = req.data?.patch || {};
+  // Whitelist — never let the panel overwrite points/tier/lifetime fields
+  // from the client. Those move only through the server ledger.
+  const patch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+  if (typeof raw.name       === 'string') patch.name       = raw.name.slice(0, 80);
+  if (typeof raw.email      === 'string') patch.email      = raw.email.slice(0, 120);
+  if (typeof raw.dob        === 'string') patch.dob        = raw.dob.slice(0, 20);
+  if (typeof raw.lang       === 'string') patch.lang       = raw.lang.slice(0, 8);
+  if (typeof raw.prefBranch === 'string') patch.prefBranch = raw.prefBranch.slice(0, 40);
+  if (typeof raw.blocked    === 'boolean' && caller.role === 'owner') patch.blocked = raw.blocked;
+  await getFirestore().doc(`customers/${uid}`).set(patch, { merge: true });
+  return { ok: true };
+});
+
 interface SaveReferralConfigData { config: ReferralConfigDoc }
 
 /** Owner-only: replace the referral config. */
