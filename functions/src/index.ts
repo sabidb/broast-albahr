@@ -214,6 +214,24 @@ interface FlatMenuItem {
  * client bundle cannot inflate discounts or drop prices.
  */
 export const submitOrder = onCall<SubmitOrderData>({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req: CallableRequest<SubmitOrderData>) => {
+  try {
+    return await submitOrderImpl(req);
+  } catch (err: any) {
+    // HttpsError is returned to the client automatically, but callable v2
+    // does not stderr-log it by default — which makes triaging a "customer
+    // says nothing works" report impossible without browser access. Log
+    // every failure with the code + message + uid + clientOrderId so
+    // `functions:log --only submitOrder` shows the real reason.
+    const code = err?.code || err?.name || 'unknown';
+    const msg = err?.message || String(err);
+    const cid = req.data?.clientOrderId || '';
+    const uid = req.auth?.uid || '';
+    try { console.error(`[submitOrder] ${code}: ${msg} (uid=${uid} clientOrderId=${cid})`); } catch {}
+    throw err;
+  }
+});
+
+async function submitOrderImpl(req: CallableRequest<SubmitOrderData>) {
   if (!req.auth) {
     throw new HttpsError('unauthenticated', 'Sign in required.');
   }
@@ -525,7 +543,7 @@ export const submitOrder = onCall<SubmitOrderData>({ secrets: [REWARD_TOKEN_SIGN
     rewardsIssued: issuedRewards.length,
     pointsAwarded,
   };
-});
+}
 
 // ── status transition table ─────────────────────────────────────────────
 // Terminal states (cancelled / refunded) have an empty exits list so nothing
