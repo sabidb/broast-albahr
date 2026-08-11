@@ -25,6 +25,10 @@ export interface MenuItem {
   branches?: string[];
   /** Per-branch on/off override; missing branchId key = follow `available`. Admin-managed. */
   availability?: Record<string, boolean>;
+  /** Admin-editable long description shown on the product-detail sheet. Falls back to
+   * a category-derived default when empty. */
+  description?: string;
+  descriptionAr?: string;
 }
 export type Menu = Record<string, MenuItem[]>;
 export interface Branch {

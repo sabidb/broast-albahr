@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import ItemImage from './ItemImage';
 import { detectKind, piecesOf, accompaniment, kindGradient } from '../lib/items';
@@ -96,7 +97,10 @@ export default function ItemDetail({
 
   const chip = 'rounded-full bg-white/85 px-3 py-1 text-[12px] font-black text-brand-ink';
 
-  return (
+  // Portal to <body> so the parent tab's transformPerspective stacking
+  // context doesn't cap this sheet's z-index — otherwise the fixed bottom
+  // navigation paints on top of the Add-to-Cart bar.
+  const sheet = (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -147,7 +151,7 @@ export default function ItemDetail({
         {/* details — compact, scrolls only if the phone is very small */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <p className="text-[13px] font-semibold leading-snug text-brand-ink2">
-            {accompaniment(kind, isAr)}
+            {(isAr ? item.descriptionAr : item.description) || accompaniment(kind, isAr)}
           </p>
 
           {variants.length > 0 && (
@@ -228,4 +232,7 @@ export default function ItemDetail({
       </motion.div>
     </motion.div>
   );
+
+  if (typeof document === 'undefined') return sheet;
+  return createPortal(sheet, document.body);
 }
