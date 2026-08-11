@@ -2,9 +2,9 @@
  * Phase 16 — Marketing campaigns + Phase 15 audience segments.
  *
  * Storage layout (Firestore):
- *   settings/segments/{segmentId}   — reusable audience: filter rules +
+ *   segments/{segmentId}   — reusable audience: filter rules +
  *                                     explicit include/exclude uids.
- *   settings/campaigns/{campaignId} — a reward-issuing programme scoped to
+ *   campaigns/{campaignId} — a reward-issuing programme scoped to
  *                                     an audience, a branch set, a time
  *                                     window, and a hard budget.
  *   campaignRewards/{id}            — per-customer reward issuance. Links
@@ -223,7 +223,7 @@ export async function issueCampaignRewardTo(campaignId: string, customerUid: str
   error?: string;
 }> {
   const db = getFirestore();
-  const cRef = db.doc(`settings/campaigns/${campaignId}`);
+  const cRef = db.doc(`campaigns/${campaignId}`);
   const custRef = db.doc(`customers/${customerUid}`);
   const rewardRef = db.collection('rewards').doc();
   const issuedRef = db.doc(`campaignRewards/${campaignId}_${customerUid}`);
@@ -370,7 +370,7 @@ export async function evaluateCampaignsForCustomer(customerUid: string, trigger:
     const custSnap = await db.doc(`customers/${customerUid}`).get();
     if (!custSnap.exists) return out;
     // Fetch every campaign — small collection, no index needed.
-    const campSnap = await db.collection('settings/campaigns').get();
+    const campSnap = await db.collection('campaigns').get();
 
     for (const doc of campSnap.docs) {
       const c = doc.data() as CampaignDoc;
@@ -388,7 +388,7 @@ export async function evaluateCampaignsForCustomer(customerUid: string, trigger:
       if (!c.segmentId) {
         inAudience = true; // broadcast
       } else {
-        const sSnap = await db.doc(`settings/segments/${c.segmentId}`).get();
+        const sSnap = await db.doc(`segments/${c.segmentId}`).get();
         if (!sSnap.exists) continue;
         const seg = sSnap.data() as SegmentDoc;
         const uids = await evaluateSegment(seg);
@@ -409,7 +409,7 @@ export async function evaluateCampaignsForCustomer(customerUid: string, trigger:
 
 async function isInactivitySegment(db: any, segmentId: string): Promise<boolean> {
   try {
-    const s = await db.doc(`settings/segments/${segmentId}`).get();
+    const s = await db.doc(`segments/${segmentId}`).get();
     if (!s.exists) return false;
     const r = (s.data() as any)?.rules || {};
     return typeof r.inactiveDays === 'number' && r.inactiveDays > 0;

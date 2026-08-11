@@ -663,12 +663,12 @@ async function submitOrderImpl(req: CallableRequest<SubmitOrderData>) {
     if (campaignRes.issued > 0) {
       try {
         await dispatchNotification({
-          phone: userPhone,
           templateName: 'campaign.available' as TemplateName,
           ctx: { count: String(campaignRes.issued) },
-          orderNo,
+          uid,
+          phone: userPhone,
           dedupKey: `campaign.issued:${clientOrderId}`,
-          meta: { source: 'submitOrder', issued: campaignRes.issued },
+          meta: { source: 'submitOrder', orderNo, issued: campaignRes.issued },
         });
       } catch { /* notification is best-effort */ }
     }
@@ -1496,7 +1496,7 @@ export const saveSegment = onCall<SaveSegmentData>(async (req: CallableRequest<S
     updatedAt: nowIso,
     createdBy: req.auth.uid,
   };
-  const ref = getFirestore().doc(`settings/segments/${id}`);
+  const ref = getFirestore().doc(`segments/${id}`);
   const existing = await ref.get();
   if (!existing.exists) doc.createdAt = nowIso;
   await ref.set(doc, { merge: true });
@@ -1510,7 +1510,7 @@ export const deleteSegment = onCall<DeleteSegmentData>(async (req: CallableReque
   if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
   const id = String(req.data?.segmentId || '').trim();
   if (!id) throw new HttpsError('invalid-argument', 'segmentId required.');
-  await getFirestore().doc(`settings/segments/${id}`).delete();
+  await getFirestore().doc(`segments/${id}`).delete();
   return { ok: true };
 });
 
@@ -1585,7 +1585,7 @@ export const saveCampaign = onCall<SaveCampaignData>(async (req: CallableRequest
     updatedAt: nowIso,
     createdBy: req.auth.uid,
   };
-  const ref = getFirestore().doc(`settings/campaigns/${id}`);
+  const ref = getFirestore().doc(`campaigns/${id}`);
   const existing = await ref.get();
   if (!existing.exists) {
     doc.createdAt = nowIso;
@@ -1602,7 +1602,7 @@ export const deleteCampaign = onCall<DeleteCampaignData>(async (req: CallableReq
   if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
   const id = String(req.data?.campaignId || '').trim();
   if (!id) throw new HttpsError('invalid-argument', 'campaignId required.');
-  await getFirestore().doc(`settings/campaigns/${id}`).delete();
+  await getFirestore().doc(`campaigns/${id}`).delete();
   return { ok: true };
 });
 
@@ -1615,7 +1615,7 @@ export const setCampaignStatus = onCall<SetCampaignStatusData>({ secrets: [REWAR
   const status = String(req.data?.status || '').trim() as SetCampaignStatusData['status'];
   if (!id) throw new HttpsError('invalid-argument', 'campaignId required.');
   if (['active', 'paused', 'ended', 'draft'].indexOf(status) < 0) throw new HttpsError('invalid-argument', 'bad status');
-  await getFirestore().doc(`settings/campaigns/${id}`).update({
+  await getFirestore().doc(`campaigns/${id}`).update({
     status,
     updatedAt: new Date().toISOString(),
   });
@@ -1637,14 +1637,14 @@ export const issueCampaignNow = onCall<IssueCampaignNowData>({ secrets: [REWARD_
   const id = String(req.data?.campaignId || '').trim();
   if (!id) throw new HttpsError('invalid-argument', 'campaignId required.');
   const db = getFirestore();
-  const cSnap = await db.doc(`settings/campaigns/${id}`).get();
+  const cSnap = await db.doc(`campaigns/${id}`).get();
   if (!cSnap.exists) throw new HttpsError('not-found', 'campaign not found');
   const c = cSnap.data() as CampaignDoc;
   if (c.status !== 'active') throw new HttpsError('failed-precondition', 'campaign not active');
 
   let uids: string[];
   if (c.segmentId) {
-    const sSnap = await db.doc(`settings/segments/${c.segmentId}`).get();
+    const sSnap = await db.doc(`segments/${c.segmentId}`).get();
     if (!sSnap.exists) throw new HttpsError('failed-precondition', 'segment missing');
     uids = await evaluateSegment(sSnap.data() as SegmentDoc);
   } else {
@@ -1668,13 +1668,13 @@ export const runScheduledCampaigns = onSchedule(
   { schedule: '0 4 * * *', timeZone: 'UTC', secrets: [REWARD_TOKEN_SIGNING_KEY] },
   async () => {
     const db = getFirestore();
-    const campSnap = await db.collection('settings/campaigns').get();
+    const campSnap = await db.collection('campaigns').get();
     let totalIssued = 0, totalMatched = 0;
     for (const doc of campSnap.docs) {
       const c = doc.data() as CampaignDoc;
       if (c.status !== 'active') continue;
       if (!c.segmentId) continue; // broadcast campaigns run manually — spamming everyone daily would be spammy
-      const segSnap = await db.doc(`settings/segments/${c.segmentId}`).get();
+      const segSnap = await db.doc(`segments/${c.segmentId}`).get();
       if (!segSnap.exists) continue;
       const seg = segSnap.data() as SegmentDoc;
       // Only run inactivity-based segments here; other segments already

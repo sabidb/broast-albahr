@@ -267,19 +267,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Phase 16 — marketing segments (settings/segments/{id}).
-    // Staff can read to render the Marketing tab; owner-only writes come
-    // through the saveSegment / deleteSegment callables. Direct writes are
-    // denied so a compromised admin session can't bypass the callable's
-    // validation.
-    match /settings/segments/{id} {
+    // Phase 16 — marketing segments (top-level collection). Staff read
+    // to render the Marketing tab; owner-only writes come through the
+    // saveSegment / deleteSegment callables. Direct writes are denied so
+    // a compromised admin session can't bypass callable validation.
+    match /segments/{id} {
       allow read: if isStaff();
       allow write: if false;
     }
 
-    // Phase 16 — marketing campaigns (settings/campaigns/{id}). Same access
+    // Phase 16 — marketing campaigns (top-level collection). Same access
     // model as segments — staff read, callables write.
-    match /settings/campaigns/{id} {
+    match /campaigns/{id} {
       allow read: if isStaff();
       allow write: if false;
     }
