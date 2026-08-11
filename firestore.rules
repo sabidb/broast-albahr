@@ -88,10 +88,25 @@ service cloud.firestore {
         && request.resource.data.nameEn.size() > 0
         && request.resource.data.nameAr is string
         && request.resource.data.nameAr.size() > 0;
-      allow update: if isBranchStaff(branchId)
-        && request.resource.data.nameEn is string
-        && request.resource.data.nameAr is string;
+      // Owner can rewrite anything (renames, deactivation, address, hours…).
+      // A branch admin can update only *their own* branch and only mutable
+      // operational fields — never rename, never change branchId semantics.
+      allow update: if isOwner()
+        || (isStaff() && staffBranch() == branchId
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['phone', 'address', 'openHours', 'closeHours',
+                           'hours', 'prepMinutes', 'active', 'notes',
+                           'updatedAt', 'updatedBy']));
       allow delete: if isOwner();
+    }
+
+    // Owner-only audit trail. Written server-side (Admin SDK) by the
+    // staff-provisioning callables and future sensitive actions; direct
+    // client writes are denied. Owner reads for review; branch staff
+    // never see other branches' actions.
+    match /auditLogs/{id} {
+      allow read: if isOwner();
+      allow write: if false;
     }
 
     // Customer profiles keyed by Firebase Auth uid (anonymous). Owning

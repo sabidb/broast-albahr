@@ -65,6 +65,15 @@ import {
   type SegmentDoc, type CampaignDoc,
 } from './campaigns.js';
 
+// Owner-only branch-user provisioning callables. Re-exported so Firebase
+// deploy picks them up alongside the callables defined in this file.
+export {
+  createBranchUser,
+  resetBranchUserPassword,
+  setBranchUserStatus,
+  deleteBranchUser,
+} from './staff.js';
+
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
 
