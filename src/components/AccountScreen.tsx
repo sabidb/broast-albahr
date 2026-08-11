@@ -89,7 +89,7 @@ export default function AccountScreen({
 
   if (chat) {
     return (
-      <div className="mx-auto max-w-[560px] px-4 pb-32 pt-5">
+      <div className="mx-auto max-w-[560px] px-4 pb-40 pt-5">
         <button onClick={() => setChat(false)} className="mb-3 text-sm font-black text-brand-red">
           ← {isAr ? 'رجوع' : 'Back'}
         </button>
@@ -101,7 +101,7 @@ export default function AccountScreen({
   }
 
   return (
-    <div className="mx-auto max-w-[560px] px-4 pb-32 pt-5">
+    <div className="mx-auto max-w-[560px] px-4 pb-40 pt-5">
       {/* profile */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}

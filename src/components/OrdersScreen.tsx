@@ -38,7 +38,7 @@ export default function OrdersScreen({
 }) {
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   return (
-    <div className="mx-auto max-w-[560px] px-4 pb-32 pt-5">
+    <div className="mx-auto max-w-[560px] px-4 pb-40 pt-5">
       <h2 className="mb-4 text-2xl font-black text-brand-ink">{isAr ? 'طلباتي 🧾' : 'My Orders 🧾'}</h2>
       {orders.length === 0 ? (
         <div className="mt-20 text-center">

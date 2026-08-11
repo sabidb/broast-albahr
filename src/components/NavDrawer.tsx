@@ -2,15 +2,14 @@ import { motion } from 'framer-motion';
 import { tierFor, type LoyaltyState } from '../lib/loyalty';
 import type { StreakState } from '../lib/streak';
 import type { Tab } from './App';
+import { APP_VERSION } from '../lib/utils';
 
 export default function NavDrawer({
   user,
   loyalty,
   streak,
-  active,
   isAr,
   branchName,
-  onNavigate,
   onToggleLang,
   onLogout,
   onChangeBranch,
@@ -32,12 +31,6 @@ export default function NavDrawer({
   const initial = user.name.trim().charAt(0).toUpperCase() || '🙂';
   const hiddenX = isAr ? '100%' : '-100%';
 
-  // Everything EXCEPT "My Orders" lives here.
-  const nav: { id: Tab; icon: string; label: string }[] = [
-    { id: 'menu', icon: '🍗', label: isAr ? 'القائمة' : 'Menu' },
-    { id: 'rewards', icon: '🎁', label: isAr ? 'المكافآت والنقاط' : 'Rewards & Points' },
-    { id: 'account', icon: '👤', label: isAr ? 'حسابي' : 'My Account' },
-  ];
   const actions = [
     {
       icon: '📍',
@@ -79,7 +72,7 @@ export default function NavDrawer({
           </div>
           <div className="mt-3 text-lg font-black">{user.name}</div>
           <div className="text-[13px] font-bold opacity-90">{user.phone}</div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-black">
               {tier.emoji} {isAr ? tier.nameAr : tier.name}
             </span>
@@ -88,37 +81,17 @@ export default function NavDrawer({
           </div>
         </div>
 
-        {/* nav */}
+        {/* actions */}
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-4">
-          {nav.map((n) => {
-            const on = active === n.id;
-            return (
-              <button
-                key={n.id}
-                onClick={() => {
-                  onNavigate(n.id);
-                  onClose();
-                }}
-                className="flex items-center gap-3 rounded-2xl px-3 py-3 text-start transition"
-                style={{ background: on ? '#E10600' : 'transparent', color: on ? '#fff' : '#1E1206' }}
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg shadow-soft">
-                  {n.icon}
-                </span>
-                <span className="flex-1 text-[15px] font-black">{n.label}</span>
-                <span style={{ opacity: on ? 1 : 0.4 }}>›</span>
-              </button>
-            );
-          })}
-
-          <div className="my-3 h-px bg-brand-line" />
-
+          <div className="mb-2 px-1 text-[11px] font-black uppercase tracking-wide text-brand-muted">
+            {isAr ? 'الإعدادات' : 'Settings'}
+          </div>
           {actions.map((a, i) => (
             <button
               key={i}
               onClick={() => {
                 a.onClick();
-                if (a.danger || a.icon === '⚙️' || a.icon === '📍') onClose();
+                onClose();
               }}
               className="flex items-center gap-3 rounded-2xl px-3 py-3 text-start"
             >
@@ -133,7 +106,7 @@ export default function NavDrawer({
         </nav>
 
         <div className="px-5 pb-5 pt-2 text-center text-[11px] font-bold text-brand-muted">
-          Broast Al Bahr · بروست البحر · v2.0
+          Broast Al Bahr · بروست البحر · v{APP_VERSION}
         </div>
       </motion.aside>
     </motion.div>

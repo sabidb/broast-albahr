@@ -15,6 +15,7 @@ import StreakModal from './StreakModal';
 import BranchSelectStep from './BranchSelectStep';
 import { NotificationsBell, NotificationsSheet } from './NotificationsSheet';
 import AnnouncementBanner from './AnnouncementBanner';
+import BottomNav from './BottomNav';
 import ErrorBoundary from './ErrorBoundary';
 
 export type Tab = 'menu' | 'rewards' | 'orders' | 'account';
@@ -468,22 +469,10 @@ function AppInner() {
           </div>
           <div className="flex items-center gap-2">
             <NotificationsBell phone={user.phone} isAr={isAr} onOpen={() => setNotifOpen(true)} />
-            {/* My Orders — kept out of the hamburger */}
-            <button
-              onClick={() => setTab('orders')}
-              aria-label="orders"
-              className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg shadow-soft"
-            >
-              🧾
-              {orders.length > 0 && (
-                <span className="absolute -end-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-red px-1 text-[10px] font-black text-white">
-                  {orders.length}
-                </span>
-              )}
-            </button>
-            {/* points + streak */}
+            {/* points + streak — informational chip. Full Rewards screen lives in the bottom nav. */}
             <button
               onClick={() => setTab('rewards')}
+              aria-label={isAr ? 'المكافآت' : 'Rewards'}
               className="flex items-center gap-1.5 rounded-full px-3 py-2 text-white shadow-red"
               style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)' }}
             >
@@ -543,7 +532,7 @@ function AppInner() {
             whileTap={{ scale: 0.96 }}
             onClick={() => setCheckoutOpen(true)}
             className="cart-fab fixed inset-x-0 z-[95] mx-auto flex w-[calc(100%-2rem)] max-w-[420px] items-center justify-between rounded-[22px] px-5 py-3.5 text-white shadow-[0_16px_40px_rgba(225,6,0,0.4)]"
-            style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
+            style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)' }}
           >
             <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/25 px-2 text-[13px] font-black">
               {cartCount}
@@ -659,7 +648,21 @@ function AppInner() {
         {streakTick && <StreakModal tick={streakTick} isAr={isAr} onClose={() => setStreakTick(null)} />}
       </AnimatePresence>
 
-      <div className="pointer-events-none fixed bottom-1 left-0 right-0 z-[1] text-center text-[10px] font-medium tracking-wide text-brand-ink/40">
+      {/* Bottom navigation — hidden while a fullscreen overlay owns the viewport */}
+      {!checkoutOpen && !trackOrder && !lastOrder && (
+        <BottomNav
+          active={tab}
+          isAr={isAr}
+          ordersCount={orders.length}
+          points={loyalty.points}
+          onChange={setTab}
+        />
+      )}
+
+      <div
+        className="pointer-events-none fixed inset-x-0 z-[1] text-center text-[10px] font-medium tracking-wide text-brand-ink/40"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 78px)' }}
+      >
         v{APP_VERSION}
       </div>
     </div>

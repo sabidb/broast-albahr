@@ -114,7 +114,7 @@ export default function RewardsScreen({
   const deco2Y = useTransform(scrollY, [0, 320], [0, 50]);
 
   return (
-    <div className="mx-auto max-w-[560px] px-4 pb-32 pt-4">
+    <div className="mx-auto max-w-[560px] px-4 pb-40 pt-4">
       {/* points hero — parallax */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}

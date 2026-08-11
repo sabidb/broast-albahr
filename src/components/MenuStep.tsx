@@ -52,7 +52,7 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
   const catOf = (it: MenuItem) => Object.keys(menu).find((c) => menu[c].some((x) => x.id === it.id)) || active;
 
   return (
-    <div className="mx-auto max-w-[640px] px-4 pb-32">
+    <div className="mx-auto max-w-[640px] px-4 pb-40">
       {/* greeting */}
       <div className="pt-5">
         <div className="text-[13px] font-bold text-brand-muted">
@@ -131,7 +131,25 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
       <div className="mb-2 mt-4 text-[16px] font-black text-brand-ink">{q ? (isAr ? 'النتائج' : 'Results') : stripEmoji(active)}</div>
       <AnimatePresence mode="wait">
         <motion.div key={q || active} variants={stagger} initial="initial" whileInView="animate" viewport={{ once: true, amount: 0.02 }} className="flex flex-col gap-2.5">
-          {rows.length === 0 && <div className="py-10 text-center font-bold text-brand-muted">{isAr ? 'لا نتائج' : 'No results'}</div>}
+          {rows.length === 0 && (
+            <div className="flex flex-col items-center gap-2 py-14 text-center">
+              <div className="text-5xl">🔎</div>
+              <div className="text-[15px] font-black text-brand-ink">
+                {isAr ? 'ما لقينا شيء' : 'No matches yet'}
+              </div>
+              <p className="max-w-[240px] text-[12px] font-semibold text-brand-muted">
+                {isAr ? 'جرّب بحث مختلف أو تصفّح الأقسام أعلاه.' : 'Try a different search or browse the categories above.'}
+              </p>
+              {q && (
+                <button
+                  onClick={() => setQuery('')}
+                  className="mt-2 rounded-full bg-brand-red px-4 py-2 text-[12px] font-black text-white shadow-red"
+                >
+                  {isAr ? 'مسح البحث' : 'Clear search'}
+                </button>
+              )}
+            </div>
+          )}
           {rows.map((it) => {
             const qty = cart[it.id]?.qty;
             return (
