@@ -1,4 +1,5 @@
 import { motion, LayoutGroup } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import type { Tab } from './App';
 
 interface Props {
@@ -48,6 +49,13 @@ const AccountIcon = (
 );
 
 export default function BottomNav({ active, isAr, ordersCount = 0, points = 0, onChange }: Props) {
+  // Entrance animation on very first mount so the bar slides up instead of
+  // popping into place under the fresh menu.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   const tabs: TabDef[] = [
     { id: 'menu',    labelEn: 'Home',    labelAr: 'الرئيسية',  icon: HomeIcon },
     { id: 'orders',  labelEn: 'Orders',  labelAr: 'طلباتي',   icon: OrdersIcon },
@@ -56,7 +64,10 @@ export default function BottomNav({ active, isAr, ordersCount = 0, points = 0, o
   ];
 
   return (
-    <div
+    <motion.div
+      initial={{ y: 40, opacity: 0 }}
+      animate={{ y: ready ? 0 : 40, opacity: ready ? 1 : 0 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       className="bottom-nav fixed inset-x-0 z-[90] mx-auto flex justify-center px-3"
       style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)' }}
     >
@@ -108,6 +119,6 @@ export default function BottomNav({ active, isAr, ordersCount = 0, points = 0, o
           })}
         </LayoutGroup>
       </nav>
-    </div>
+    </motion.div>
   );
 }

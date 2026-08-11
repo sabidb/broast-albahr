@@ -55,12 +55,26 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
     <div className="mx-auto max-w-[640px] px-4 pb-40">
       {/* greeting */}
       <div className="pt-5">
-        <div className="text-[13px] font-bold text-brand-muted">
-          {isAr ? 'أهلاً' : 'Hello'}, {user.name.split(' ')[0]} 👋
+        <div className="flex items-center gap-1 text-[13px] font-bold text-brand-muted">
+          <span>{isAr ? 'أهلاً' : 'Hello'}, {user.name.split(' ')[0]}</span>
+          <motion.span
+            aria-hidden
+            animate={{ rotate: [0, 18, -8, 18, 0] }}
+            transition={{ duration: 1.6, delay: 0.4, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }}
+            style={{ originY: 0.8, originX: 0.7 }}
+            className="inline-block"
+          >
+            👋
+          </motion.span>
         </div>
-        <h1 className="text-[26px] font-black leading-tight text-brand-ink">
+        <motion.h1
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 0.9, 0.28, 1] }}
+          className="text-[26px] font-black leading-tight text-brand-ink"
+        >
           {isAr ? 'وش تشتهي اليوم؟' : "What are you\ncraving today?"}
-        </h1>
+        </motion.h1>
       </div>
 
       {/* search */}
@@ -187,6 +201,8 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
                     else if (info.offset.x < -70) addQty(it, -1);
                   }}
                   whileTap={it.available ? { scale: 0.99 } : undefined}
+                  whileHover={it.available ? { y: -2, boxShadow: '0 16px 34px rgba(180,60,0,0.14)' } : undefined}
+                  transition={{ type: 'spring', stiffness: 320, damping: 26 }}
                   onClick={() => it.available && setDetail({ item: it, cat: catOf(it) })}
                   className="relative flex cursor-pointer items-center gap-3 rounded-[24px] bg-white p-3 shadow-soft ring-1 ring-brand-line"
                   style={{ opacity: it.available ? 1 : 0.5 }}
