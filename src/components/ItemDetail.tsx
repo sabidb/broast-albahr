@@ -116,14 +116,15 @@ export default function ItemDetail({
         onDragEnd={(_, info) => {
           if (info.offset.y > 130 || info.velocity.y > 700) onClose();
         }}
-        className="flex h-[92dvh] max-h-[92dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[30px] bg-brand-cream sm:h-auto sm:max-h-[88vh]"
+        className="flex h-[92dvh] max-h-[92dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[30px] bg-brand-cream sm:h-[88vh] sm:max-h-[88vh]"
       >
         {/* compact image hero */}
-        <div className="relative shrink-0 px-5 pb-4 pt-3" style={{ background: kindGradient(kind) }}>
-          <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/50" />
+        <div className="relative shrink-0 px-5 pb-3 pt-2.5" style={{ background: kindGradient(kind) }}>
+          <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-white/50" />
           <button
             onClick={onClose}
-            className="absolute end-4 top-4 flex h-9 w-9 items-center justify-center rounded-2xl bg-white/25 text-lg text-white"
+            aria-label={isAr ? 'إغلاق' : 'Close'}
+            className="absolute end-4 top-3 flex h-9 w-9 items-center justify-center rounded-2xl bg-white/25 text-lg text-white"
           >
             ✕
           </button>
@@ -131,55 +132,27 @@ export default function ItemDetail({
             initial={{ scale: 0.7, rotate: -8, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 220, damping: 16 }}
-            className="mx-auto h-32 w-32 overflow-hidden rounded-[28px] bg-white/20 ring-8 ring-white/10 sm:h-40 sm:w-40"
+            className="mx-auto h-24 w-24 overflow-hidden rounded-[24px] bg-white/20 ring-8 ring-white/10 sm:h-28 sm:w-28"
           >
-            <ItemImage item={item} category={category} iconSize={100} />
+            <ItemImage item={item} category={category} iconSize={84} />
           </motion.div>
-          <h2 className="mt-3 text-center text-[22px] font-black leading-tight text-white drop-shadow sm:text-2xl">{baseName}</h2>
-          <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+          <h2 className="mt-2 text-center text-[19px] font-black leading-tight text-white drop-shadow sm:text-[22px]">{baseName}</h2>
+          <div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
             <span className={chip}>🔥 {item.cal}</span>
             {pieces && <span className={chip}>{isAr ? `${pieces} قطع` : `${pieces} pieces`}</span>}
             <span className={chip}>{isAr ? '١٠٠٪ حلال' : '100% Halal'}</span>
           </div>
         </div>
 
-        {/* details (scrollable) */}
-        <div className="flex-1 overflow-y-auto px-5 py-5">
-          <div className="text-[13px] font-black uppercase tracking-wide text-brand-muted">
-            {isAr ? 'يأتي معه' : 'What you get'}
-          </div>
-          <p className="mt-1.5 text-[15px] font-semibold leading-relaxed text-brand-ink2">
+        {/* details — compact, scrolls only if the phone is very small */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <p className="text-[13px] font-semibold leading-snug text-brand-ink2">
             {accompaniment(kind, isAr)}
           </p>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl bg-white p-3 text-center shadow-soft ring-1 ring-brand-line">
-              <div className="text-[11px] font-bold text-brand-muted">{isAr ? 'السعرات' : 'Calories'}</div>
-              <div className="text-[16px] font-black text-brand-red">{item.cal}</div>
-            </div>
-            <div className="rounded-2xl bg-white p-3 text-center shadow-soft ring-1 ring-brand-line">
-              <div className="text-[11px] font-bold text-brand-muted">{isAr ? 'القطع' : 'Pieces'}</div>
-              <div className="text-[16px] font-black text-brand-red">{pieces ?? (isAr ? '—' : '1 serving')}</div>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <div className="mb-2 text-[13px] font-black uppercase tracking-wide text-brand-muted">
-              {isAr ? 'ملاحظات خاصة (اختياري)' : 'Special notes (optional)'}
-            </div>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={isAr ? 'مثال: بدون بصل، صلصة إضافية...' : 'e.g. no onions, extra sauce...'}
-              rows={2}
-              maxLength={140}
-              className="w-full resize-none rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-[13px] font-bold text-brand-ink outline-none focus:border-brand-red"
-            />
-          </div>
-
           {variants.length > 0 && (
-            <div className="mt-5">
-              <div className="mb-2 text-[13px] font-black uppercase tracking-wide text-brand-muted">
+            <div className="mt-3">
+              <div className="mb-1.5 text-[11px] font-black uppercase tracking-wide text-brand-muted">
                 {isAr ? 'اختر النكهة' : 'Choose your flavor'}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -189,7 +162,7 @@ export default function ItemDetail({
                     <button
                       key={i}
                       onClick={() => setSelected(i)}
-                      className="rounded-2xl border-2 px-4 py-2.5 text-[14px] font-black transition"
+                      className="rounded-2xl border-2 px-3.5 py-2 text-[13px] font-black transition"
                       style={{
                         borderColor: on ? '#E10600' : 'rgba(30,18,6,0.12)',
                         background: on ? '#E10600' : '#fff',
@@ -203,6 +176,20 @@ export default function ItemDetail({
               </div>
             </div>
           )}
+
+          <div className="mt-3">
+            <div className="mb-1.5 text-[11px] font-black uppercase tracking-wide text-brand-muted">
+              {isAr ? 'ملاحظات (اختياري)' : 'Special notes (optional)'}
+            </div>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={isAr ? 'بدون بصل، صلصة إضافية...' : 'no onions, extra sauce...'}
+              maxLength={140}
+              className="w-full rounded-2xl border-2 border-brand-line bg-white px-4 py-2.5 text-[13px] font-bold text-brand-ink outline-none focus:border-brand-red"
+            />
+          </div>
         </div>
 
         {/* always-visible add bar */}
