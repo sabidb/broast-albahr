@@ -60,8 +60,20 @@ export default function OrderSuccess({
             initial={{ scale: 0, rotate: -30 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 240, damping: 15, delay: 0.15 }}
-            className="mx-auto mb-3 flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-red"
+            className="relative mx-auto mb-3 flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-red"
           >
+            {/* pulsing ring — signals success without being loud */}
+            {[0, 1].map((i) => (
+              <motion.span
+                key={i}
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.35)' }}
+                initial={{ scale: 1, opacity: 0.55 }}
+                animate={{ scale: [1, 1.6], opacity: [0.55, 0] }}
+                transition={{ duration: 1.8, delay: 0.9 + i * 0.5, repeat: Infinity, repeatDelay: 0.6, ease: 'easeOut' }}
+              />
+            ))}
             <svg width="64" height="64" viewBox="0 0 64 64">
               <motion.circle
                 cx="32"

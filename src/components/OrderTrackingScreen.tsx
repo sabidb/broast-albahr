@@ -151,10 +151,15 @@ export default function OrderTrackingScreen({ order, isAr, onClose, onRate }: Pr
                       {s.icon}
                     </motion.div>
                     {i < STEPS.length - 1 && (
-                      <div
-                        className="my-1 w-[3px] flex-1 rounded transition-colors"
-                        style={{ minHeight: 30, background: lineOn ? '#E10600' : '#F3EBDF' }}
-                      />
+                      <div className="relative my-1 w-[3px] flex-1 overflow-hidden rounded bg-[#F3EBDF]" style={{ minHeight: 30 }}>
+                        <motion.span
+                          className="absolute inset-x-0 top-0 rounded"
+                          style={{ background: 'linear-gradient(180deg,#E10600,#FF5A1F)' }}
+                          initial={false}
+                          animate={{ height: lineOn ? '100%' : active ? '55%' : '0%' }}
+                          transition={{ duration: 0.55, ease: [0.22, 0.9, 0.28, 1] }}
+                        />
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 pb-4 pt-2">
