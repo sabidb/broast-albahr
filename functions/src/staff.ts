@@ -69,6 +69,7 @@ interface CreateBranchUserData {
  * logs the action.
  */
 export const createBranchUser = onCall<CreateBranchUserData>(
+  { region: 'me-west1' },
   async (req: CallableRequest<CreateBranchUserData>) => {
     const { uid: actorUid } = await requireOwner(req.auth);
     const { email, password, username, branchId, role: roleIn } = req.data ?? ({} as CreateBranchUserData);
@@ -149,6 +150,7 @@ interface ResetBranchUserPasswordData {
  * as a fallback for staff who know their own email.
  */
 export const resetBranchUserPassword = onCall<ResetBranchUserPasswordData>(
+  { region: 'me-west1' },
   async (req: CallableRequest<ResetBranchUserPasswordData>) => {
     const { uid: actorUid } = await requireOwner(req.auth);
     const { targetUid, newPassword } = req.data ?? ({} as ResetBranchUserPasswordData);
@@ -175,6 +177,7 @@ interface SetBranchUserStatusData {
  * Refuses to disable the last remaining owner.
  */
 export const setBranchUserStatus = onCall<SetBranchUserStatusData>(
+  { region: 'me-west1' },
   async (req: CallableRequest<SetBranchUserStatusData>) => {
     const { uid: actorUid } = await requireOwner(req.auth);
     const { targetUid, disabled } = req.data ?? ({} as SetBranchUserStatusData);
@@ -216,6 +219,7 @@ interface DeleteBranchUserData {
  * The audit log entry survives — that's the point of the audit log.
  */
 export const deleteBranchUser = onCall<DeleteBranchUserData>(
+  { region: 'me-west1' },
   async (req: CallableRequest<DeleteBranchUserData>) => {
     const { uid: actorUid } = await requireOwner(req.auth);
     const { targetUid } = req.data ?? ({} as DeleteBranchUserData);
