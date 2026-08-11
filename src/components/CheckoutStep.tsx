@@ -206,7 +206,7 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
         <div className="text-[18px] font-black text-brand-ink">{isAr ? 'إتمام الطلب 🛒' : 'Checkout 🛒'}</div>
       </div>
 
-      <div className="mx-auto max-w-[600px] px-4 pb-28 pt-5">
+      <div className="mx-auto max-w-[600px] px-4 pb-36 pt-5">
         <Section>
           <span className={label}>{isAr ? 'نوع الطلب' : 'ORDER TYPE'}</span>
           <div className={seg(true)}>{isAr ? '🏃 استلام من الفرع' : '🏃 Pickup at Branch'}</div>
@@ -390,8 +390,20 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
           <div className="card-surface p-5">
             <span className={label}>{isAr ? 'ملخص الطلب' : 'ORDER SUMMARY'}</span>
             {items.length === 0 && (
-              <div className="py-4 text-center text-[13px] font-bold text-brand-muted">
-                {isAr ? 'السلة فارغة' : 'Your cart is empty'}
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <div className="text-5xl">🍗</div>
+                <div className="text-[15px] font-black text-brand-ink">
+                  {isAr ? 'سلّتك جوعانة 👀' : 'Your cart is hungry 👀'}
+                </div>
+                <p className="max-w-[240px] text-[12px] font-semibold text-brand-muted">
+                  {isAr ? 'ارجع للقائمة واختر ما تشتهيه.' : 'Head back to the menu and pick your favourites.'}
+                </p>
+                <button
+                  onClick={onBack}
+                  className="mt-1 rounded-full bg-brand-red px-5 py-2.5 text-[13px] font-black text-white shadow-red"
+                >
+                  {isAr ? 'تصفّح القائمة' : 'Explore menu'}
+                </button>
               </div>
             )}
             {items.map((i) => (
@@ -470,16 +482,33 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
           </div>
         </Section>
 
-        <motion.button
-          whileHover={{ y: -2 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={placeOrder}
-          className="sheen w-full rounded-2xl py-4 text-[17px] font-black text-white shadow-red"
-          style={{ background: 'linear-gradient(135deg,#11845B,#0c6b49)' }}
-        >
-          {isAr ? '✅ تأكيد الطلب' : '✅ Confirm Order'}
-        </motion.button>
       </div>
+
+      {/* sticky confirm bar — total stays visible at all times */}
+      {items.length > 0 && (
+        <div
+          className="fixed inset-x-0 z-[110] mx-auto flex w-full max-w-[600px] items-stretch gap-3 px-4"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}
+        >
+          <div className="flex flex-col justify-center rounded-2xl bg-white/95 px-4 py-2 shadow-[0_10px_24px_rgba(180,60,0,0.14)] ring-1 ring-brand-line backdrop-blur">
+            <span className="text-[10px] font-black uppercase tracking-wide text-brand-muted">
+              {isAr ? 'الإجمالي' : 'Total'}
+            </span>
+            <span className="font-display text-[18px] font-black leading-none text-brand-red">
+              {money(totals.total)}
+            </span>
+          </div>
+          <motion.button
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={placeOrder}
+            className="sheen flex-1 rounded-2xl py-4 text-[15px] font-black text-white shadow-red"
+            style={{ background: 'linear-gradient(135deg,#11845B,#0c6b49)' }}
+          >
+            {isAr ? '✅ تأكيد الطلب' : '✅ Confirm Order'}
+          </motion.button>
+        </div>
+      )}
     </div>
   );
 }
