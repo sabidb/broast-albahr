@@ -267,6 +267,39 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Phase 16 — marketing segments (settings/segments/{id}).
+    // Staff can read to render the Marketing tab; owner-only writes come
+    // through the saveSegment / deleteSegment callables. Direct writes are
+    // denied so a compromised admin session can't bypass the callable's
+    // validation.
+    match /settings/segments/{id} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    // Phase 16 — marketing campaigns (settings/campaigns/{id}). Same access
+    // model as segments — staff read, callables write.
+    match /settings/campaigns/{id} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    // Phase 16 — per-(campaign,customer) issuance ledger. Staff reads any
+    // for operator dashboards; a customer reads their own so the app can
+    // show "you have a campaign reward". Writes server-only.
+    match /campaignRewards/{id} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Phase 16 — audit trail. Owner-only reads (finance/ops review).
+    // Writes server-only.
+    match /campaignEvents/{id} {
+      allow read: if isOwner();
+      allow write: if false;
+    }
+
     // Everything else denied.
     match /{document=**} {
       allow read, write: if false;

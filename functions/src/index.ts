@@ -59,6 +59,10 @@ import {
   attachReferral, qualifyReferralOnOrder, getOrMintReferralCode,
   DEFAULT_REFERRAL_CONFIG, type ReferralConfigDoc,
 } from './referrals.js';
+import {
+  evaluateSegment, issueCampaignToAudience,
+  type SegmentDoc, type CampaignDoc,
+} from './campaigns.js';
 
 initializeApp();
 setGlobalOptions({ region: 'me-west1', maxInstances: 10 });
@@ -1443,4 +1447,188 @@ export const saveReferralConfig = onCall<SaveReferralConfigData>(async (req: Cal
     updatedAt: FieldValue.serverTimestamp(),
   });
   return { ok: true };
+});
+
+// ── Phase 16: Marketing campaigns + Phase 15 audience segments ──────────
+
+interface SaveSegmentData { segment: SegmentDoc }
+/** Owner-only: create or update a customer segment. */
+export const saveSegment = onCall<SaveSegmentData>(async (req: CallableRequest<SaveSegmentData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const seg = req.data?.segment;
+  if (!seg || typeof seg !== 'object') throw new HttpsError('invalid-argument', 'segment required.');
+  const id = String(seg.id || '').trim() || getFirestore().collection('_ids').doc().id;
+  const name = String(seg.name || '').trim();
+  if (!name) throw new HttpsError('invalid-argument', 'name required.');
+  const nowIso = new Date().toISOString();
+  const doc: SegmentDoc = {
+    id,
+    name,
+    description: seg.description ? String(seg.description).slice(0, 500) : undefined,
+    rules: seg.rules || {},
+    includeUids: Array.isArray(seg.includeUids) ? seg.includeUids.filter(Boolean).slice(0, 500) : [],
+    excludeUids: Array.isArray(seg.excludeUids) ? seg.excludeUids.filter(Boolean).slice(0, 500) : [],
+    updatedAt: nowIso,
+    createdBy: req.auth.uid,
+  };
+  const ref = getFirestore().doc(`settings/segments/${id}`);
+  const existing = await ref.get();
+  if (!existing.exists) doc.createdAt = nowIso;
+  await ref.set(doc, { merge: true });
+  return { ok: true, id };
+});
+
+interface DeleteSegmentData { segmentId: string }
+export const deleteSegment = onCall<DeleteSegmentData>(async (req: CallableRequest<DeleteSegmentData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const id = String(req.data?.segmentId || '').trim();
+  if (!id) throw new HttpsError('invalid-argument', 'segmentId required.');
+  await getFirestore().doc(`settings/segments/${id}`).delete();
+  return { ok: true };
+});
+
+interface ResolveSegmentPreviewData { segment: SegmentDoc; sampleSize?: number }
+/**
+ * Owner-only preview — resolves the segment audience server-side and
+ * returns the count plus a small sample (uid + name + phone) so the
+ * admin UI can render "213 customers match — e.g. Ali, Sara, Omar…"
+ * without shipping the full uid list to the browser.
+ */
+export const resolveSegmentPreview = onCall<ResolveSegmentPreviewData>(async (req: CallableRequest<ResolveSegmentPreviewData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const seg = req.data?.segment;
+  if (!seg || typeof seg !== 'object') throw new HttpsError('invalid-argument', 'segment required.');
+  const uids = await evaluateSegment(seg);
+  const sampleN = Math.max(1, Math.min(20, Math.floor(Number(req.data?.sampleSize) || 8)));
+  const sampleUids = uids.slice(0, sampleN);
+  const db = getFirestore();
+  const samples = await Promise.all(sampleUids.map(async uid => {
+    try {
+      const s = await db.doc(`customers/${uid}`).get();
+      if (!s.exists) return { uid, name: '(unknown)', phone: '' };
+      const d = s.data() as any;
+      return { uid, name: String(d.name || '(unnamed)'), phone: String(d.phone || '') };
+    } catch { return { uid, name: '(error)', phone: '' }; }
+  }));
+  return { ok: true, count: uids.length, sample: samples };
+});
+
+interface SaveCampaignData { campaign: CampaignDoc }
+/** Owner-only: create or update a campaign. Status transitions honoured. */
+export const saveCampaign = onCall<SaveCampaignData>(async (req: CallableRequest<SaveCampaignData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const c = req.data?.campaign;
+  if (!c || typeof c !== 'object') throw new HttpsError('invalid-argument', 'campaign required.');
+  const id = String(c.id || '').trim() || getFirestore().collection('_ids').doc().id;
+  const name = String(c.name || '').trim();
+  if (!name) throw new HttpsError('invalid-argument', 'name required.');
+  if (!c.reward || !c.reward.kind) throw new HttpsError('invalid-argument', 'reward.kind required.');
+  const nowIso = new Date().toISOString();
+  const validStatus: CampaignDoc['status'][] = ['draft', 'active', 'paused', 'ended'];
+  const status = validStatus.indexOf(c.status as any) >= 0 ? c.status : 'draft';
+  const doc: CampaignDoc = {
+    id,
+    name,
+    description: c.description ? String(c.description).slice(0, 1000) : undefined,
+    segmentId: c.segmentId ? String(c.segmentId) : undefined,
+    branches: Array.isArray(c.branches) ? c.branches.filter(Boolean).slice(0, 50) : [],
+    reward: {
+      kind: c.reward.kind,
+      value: Number(c.reward.value) || 0,
+      productId: c.reward.productId,
+      label: String(c.reward.label || name).slice(0, 200),
+      expiresInDays: Math.max(1, Math.min(365, Math.floor(Number(c.reward.expiresInDays) || 30))),
+      minOrderSr: Number(c.reward.minOrderSr) > 0 ? Number(c.reward.minOrderSr) : undefined,
+    },
+    budget: {
+      maxRewards: c.budget?.maxRewards != null ? Math.max(0, Math.floor(Number(c.budget.maxRewards))) : undefined,
+      dailySrCap: c.budget?.dailySrCap != null ? Math.max(0, Number(c.budget.dailySrCap)) : undefined,
+      perCustomerLimit: Math.max(1, Math.min(50, Math.floor(Number(c.budget?.perCustomerLimit) || 1))),
+    },
+    startAt: c.startAt || undefined,
+    endAt: c.endAt || undefined,
+    activeHoursStart: c.activeHoursStart || undefined,
+    activeHoursEnd: c.activeHoursEnd || undefined,
+    status,
+    notifBody: c.notifBody ? String(c.notifBody).slice(0, 500) : undefined,
+    updatedAt: nowIso,
+    createdBy: req.auth.uid,
+  };
+  const ref = getFirestore().doc(`settings/campaigns/${id}`);
+  const existing = await ref.get();
+  if (!existing.exists) {
+    doc.createdAt = nowIso;
+    doc.stats = { issued: 0, redeemed: 0, revenueSr: 0, blockedByBudget: 0, reservedSrToday: 0, reservedSrDate: nowIso.slice(0, 10) };
+  }
+  await ref.set(doc, { merge: true });
+  return { ok: true, id };
+});
+
+interface DeleteCampaignData { campaignId: string }
+export const deleteCampaign = onCall<DeleteCampaignData>(async (req: CallableRequest<DeleteCampaignData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const id = String(req.data?.campaignId || '').trim();
+  if (!id) throw new HttpsError('invalid-argument', 'campaignId required.');
+  await getFirestore().doc(`settings/campaigns/${id}`).delete();
+  return { ok: true };
+});
+
+interface SetCampaignStatusData { campaignId: string; status: 'active' | 'paused' | 'ended' | 'draft' }
+export const setCampaignStatus = onCall<SetCampaignStatusData>({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req: CallableRequest<SetCampaignStatusData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const id = String(req.data?.campaignId || '').trim();
+  const status = String(req.data?.status || '').trim() as SetCampaignStatusData['status'];
+  if (!id) throw new HttpsError('invalid-argument', 'campaignId required.');
+  if (['active', 'paused', 'ended', 'draft'].indexOf(status) < 0) throw new HttpsError('invalid-argument', 'bad status');
+  await getFirestore().doc(`settings/campaigns/${id}`).update({
+    status,
+    updatedAt: new Date().toISOString(),
+  });
+  return { ok: true };
+});
+
+interface IssueCampaignNowData { campaignId: string }
+/**
+ * Owner-only: run the campaign's audience through the reward issuer once.
+ * Uses the campaign's stored segmentId (or broadcast when omitted).
+ * Returns a summary { issued, skipped, blocked, failed, reasons } so the
+ * admin UI can show "Issued 42 · 8 skipped (already had one) · 3 blocked
+ * (daily cap)".
+ */
+export const issueCampaignNow = onCall<IssueCampaignNowData>({ secrets: [REWARD_TOKEN_SIGNING_KEY] }, async (req: CallableRequest<IssueCampaignNowData>) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const caller = await readCallerRole(req.auth.uid);
+  if (caller.role !== 'owner') throw new HttpsError('permission-denied', 'Owner only.');
+  const id = String(req.data?.campaignId || '').trim();
+  if (!id) throw new HttpsError('invalid-argument', 'campaignId required.');
+  const db = getFirestore();
+  const cSnap = await db.doc(`settings/campaigns/${id}`).get();
+  if (!cSnap.exists) throw new HttpsError('not-found', 'campaign not found');
+  const c = cSnap.data() as CampaignDoc;
+  if (c.status !== 'active') throw new HttpsError('failed-precondition', 'campaign not active');
+
+  let uids: string[];
+  if (c.segmentId) {
+    const sSnap = await db.doc(`settings/segments/${c.segmentId}`).get();
+    if (!sSnap.exists) throw new HttpsError('failed-precondition', 'segment missing');
+    uids = await evaluateSegment(sSnap.data() as SegmentDoc);
+  } else {
+    // Broadcast — every customer
+    const custs = await db.collection('customers').limit(2000).get();
+    uids = custs.docs.map(d => d.id);
+  }
+  const summary = await issueCampaignToAudience(id, uids);
+  return { ok: true, audience: uids.length, ...summary };
 });
