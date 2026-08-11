@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
+import { AnimatePresence, motion, useAnimationControls, useScroll, useTransform } from 'framer-motion';
 import CountUp from './CountUp';
 import Splash from './Splash';
 import VerifyStep from './VerifyStep';
@@ -404,6 +404,17 @@ function AppInner() {
 
   const cartCount = Object.values(cart).reduce((s, i) => s + (i.qty || 0), 0);
   const cartTotal = Object.values(cart).reduce((s, i) => s + i.price * (i.qty || 0), 0);
+  const cartCtrl = useAnimationControls();
+  const prevCartCount = useRef(cartCount);
+  useEffect(() => {
+    if (cartCount > prevCartCount.current) {
+      cartCtrl.start({
+        scale: [1, 1.06, 0.98, 1],
+        transition: { duration: 0.36, times: [0, 0.35, 0.7, 1], ease: 'easeOut' },
+      });
+    }
+    prevCartCount.current = cartCount;
+  }, [cartCount, cartCtrl]);
   const currentBranch = branches.find((b) => b.id === branchId);
   const branchLabel = currentBranch ? (isAr ? currentBranch.nameAr : currentBranch.nameEn) : null;
 
@@ -541,9 +552,14 @@ function AppInner() {
             className="cart-fab fixed inset-x-0 z-[95] mx-auto flex w-[calc(100%-2rem)] max-w-[420px] items-center justify-between rounded-[22px] px-5 py-3.5 text-white shadow-[0_16px_40px_rgba(225,6,0,0.4)]"
             style={{ background: 'linear-gradient(135deg,#E10600,#FF5A1F)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)' }}
           >
-            <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/25 px-2 text-[13px] font-black">
+            <motion.span
+              animate={cartCtrl}
+              key={cartCount}
+              initial={false}
+              className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/25 px-2 text-[13px] font-black"
+            >
               {cartCount}
-            </span>
+            </motion.span>
             <span className="font-black">{isAr ? 'عرض السلة' : 'View Cart'}</span>
             <CountUp value={cartTotal} format={money} className="font-display text-[15px] font-black" />
           </motion.button>

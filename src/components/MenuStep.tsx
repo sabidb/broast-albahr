@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import MenuCard from './MenuCard';
 import ItemDetail from './ItemDetail';
 import ItemImage from './ItemImage';
@@ -101,29 +101,44 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
       {/* category chips with icons */}
       {!q && (
         <div className="sticky top-[62px] z-20 -mx-4 mt-4 overflow-x-auto bg-brand-cream/90 px-4 py-2 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex gap-2">
-            {cats.map((c) => {
-              const on = active === c;
-              const kind = detectKind({ name: c, nameAr: c }, c);
-              return (
-                <button
-                  key={c}
-                  onClick={() => setActive(c)}
-                  className="flex items-center gap-1.5 whitespace-nowrap rounded-2xl py-1.5 pe-3.5 ps-1.5 text-[13px] font-black transition"
-                  style={{
-                    color: on ? '#fff' : '#8C7A64',
-                    background: on ? '#1E1206' : '#FFFFFF',
-                    boxShadow: on ? '0 8px 18px rgba(30,18,6,0.25)' : '0 2px 8px rgba(180,60,0,0.06)',
-                  }}
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: on ? 'rgba(255,255,255,0.15)' : '#FFF1E0' }}>
-                    <FoodIcon kind={kind} size={20} />
-                  </span>
-                  {stripEmoji(c)}
-                </button>
-              );
-            })}
-          </div>
+          <LayoutGroup id="cat-chips">
+            <div className="flex gap-2">
+              {cats.map((c) => {
+                const on = active === c;
+                const kind = detectKind({ name: c, nameAr: c }, c);
+                return (
+                  <motion.button
+                    key={c}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={() => setActive(c)}
+                    className="relative flex items-center gap-1.5 whitespace-nowrap rounded-2xl py-1.5 pe-3.5 ps-1.5 text-[13px] font-black"
+                    style={{
+                      color: on ? '#fff' : '#8C7A64',
+                      boxShadow: on ? '0 8px 18px rgba(30,18,6,0.25)' : '0 2px 8px rgba(180,60,0,0.06)',
+                      background: on ? 'transparent' : '#FFFFFF',
+                    }}
+                  >
+                    {on && (
+                      <motion.span
+                        layoutId="cat-chip-active"
+                        aria-hidden
+                        className="absolute inset-0 -z-10 rounded-2xl"
+                        style={{ background: '#1E1206' }}
+                        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                      />
+                    )}
+                    <span
+                      className="flex h-7 w-7 items-center justify-center rounded-full"
+                      style={{ background: on ? 'rgba(255,255,255,0.15)' : '#FFF1E0' }}
+                    >
+                      <FoodIcon kind={kind} size={20} />
+                    </span>
+                    {stripEmoji(c)}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </LayoutGroup>
         </div>
       )}
 
