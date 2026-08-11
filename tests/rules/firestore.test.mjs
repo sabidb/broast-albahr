@@ -156,8 +156,12 @@ describe('branch staff', () => {
     assertFails(setDoc(doc(asBranch1(), 'settings/menu'), { menu: {} })));
   it('cannot create a new branch', () =>
     assertFails(setDoc(doc(asBranch1(), 'branches/new'), { nameEn: 'X' })));
-  it('can edit their own branch', () =>
-    assertSucceeds(setDoc(doc(asBranch1(), 'branches/kakkiyah'), { nameEn: 'Kakkiyah 2', nameAr: 'الكاكية', hours: {} }, { merge: true })));
+  it('can edit operational fields on their own branch', () =>
+    assertSucceeds(updateDoc(doc(asBranch1(), 'branches/kakkiyah'), { hours: {}, phone: '0501234567', prepMinutes: 10 })));
+  it('cannot rename their own branch', () =>
+    assertFails(updateDoc(doc(asBranch1(), 'branches/kakkiyah'), { nameEn: 'Kakkiyah 2' })));
+  it('cannot edit another branch', () =>
+    assertFails(updateDoc(doc(asBranch1(), 'branches/subhani'), { phone: '0500000000' })));
   it('cannot promote themselves in users', () =>
     assertFails(setDoc(doc(asBranch1(), 'users/branch1-uid'), { role: 'owner' }, { merge: true })));
 });
