@@ -51,18 +51,17 @@ export default function OrderSuccess({
         onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-[480px] overflow-hidden rounded-t-[28px] bg-brand-cream shadow-card sm:rounded-[28px]"
       >
-        {/* red hero band */}
+        {/* red hero band — check ring, headline, order-# inline */}
         <div
-          className="relative overflow-hidden px-6 pb-16 pt-8 text-center text-white"
+          className="relative overflow-hidden px-6 pb-6 pt-7 text-center text-white"
           style={{ background: 'linear-gradient(135deg,#E10600 0%,#B00000 60%,#8A0000 100%)' }}
         >
           <motion.div
             initial={{ scale: 0, rotate: -30 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 240, damping: 15, delay: 0.15 }}
-            className="relative mx-auto mb-3 flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-red"
+            className="relative mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-red"
           >
-            {/* pulsing ring — signals success without being loud */}
             {[0, 1].map((i) => (
               <motion.span
                 key={i}
@@ -74,7 +73,7 @@ export default function OrderSuccess({
                 transition={{ duration: 1.8, delay: 0.9 + i * 0.5, repeat: Infinity, repeatDelay: 0.6, ease: 'easeOut' }}
               />
             ))}
-            <svg width="64" height="64" viewBox="0 0 64 64">
+            <svg width="56" height="56" viewBox="0 0 64 64">
               <motion.circle
                 cx="32"
                 cy="32"
@@ -105,7 +104,7 @@ export default function OrderSuccess({
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="mb-1 text-[26px] font-black leading-tight"
+            className="mb-1 text-[22px] font-black leading-tight sm:text-[24px]"
           >
             {isAr ? 'تم تأكيد طلبك!' : 'Order Confirmed!'}
           </motion.h2>
@@ -113,26 +112,24 @@ export default function OrderSuccess({
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.35 }}
-            className="text-[13px] font-semibold text-white/90"
+            className="text-[12px] font-semibold text-white/90"
           >
             {isAr ? `شكراً ${order.user.name} 🙌` : `Thank you, ${order.user.name} 🙌`}
           </motion.p>
+          <motion.div
+            initial={{ y: 12, opacity: 0, scale: 0.94 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.45 }}
+            className="mx-auto mt-4 inline-flex items-baseline gap-2 rounded-full bg-white/15 px-4 py-1.5 backdrop-blur"
+          >
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/80">
+              {isAr ? 'رقم الطلب' : 'Order #'}
+            </span>
+            <span className="font-display text-[22px] font-black leading-none text-white">
+              {order.orderNo}
+            </span>
+          </motion.div>
         </div>
-
-        {/* order-no chip floating over the hero */}
-        <motion.div
-          initial={{ y: 20, opacity: 0, scale: 0.9 }}
-          animate={{ y: 0, opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.45 }}
-          className="mx-auto -mt-10 mb-2 w-[86%] rounded-2xl bg-white px-5 py-3.5 text-center shadow-card"
-        >
-          <div className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted">
-            {isAr ? 'رقم الطلب' : 'Order Number'}
-          </div>
-          <div className="mt-0.5 font-display text-[34px] font-black leading-none text-brand-red">
-            #{order.orderNo}
-          </div>
-        </motion.div>
 
         {/* body */}
         <div className="max-h-[54vh] overflow-y-auto px-5 pb-5">
