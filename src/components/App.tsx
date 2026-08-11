@@ -464,7 +464,14 @@ function AppInner() {
             </motion.button>
             <button onClick={() => setTab('menu')} className="text-start leading-none">
               <div className="font-display text-[14px] font-extrabold tracking-tight text-brand-ink">BROAST AL BAHR</div>
-              <div className="mt-0.5 font-arabic text-[12px] font-bold text-brand-red">بروست البحر</div>
+              {branchLabel ? (
+                <div className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-brand-red">
+                  <span aria-hidden>📍</span>
+                  <span className="max-w-[140px] truncate">{branchLabel}</span>
+                </div>
+              ) : (
+                <div className="mt-0.5 font-arabic text-[12px] font-bold text-brand-red">بروست البحر</div>
+              )}
             </button>
           </div>
           <div className="flex items-center gap-2">
