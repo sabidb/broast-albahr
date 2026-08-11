@@ -351,3 +351,67 @@ export async function issueCampaignToAudience(campaignId: string, uids: string[]
   }
   return out;
 }
+
+/**
+ * Phase 15 — evaluate every active campaign against ONE customer and issue
+ * any rewards they qualify for. Called opportunistically from submitOrder
+ * on a successful order so campaigns behave like "you just did X, here's
+ * your reward" without waiting for a batch cycle. Silently swallows
+ * errors — a campaign eval failing must never break the order pipeline.
+ */
+export async function evaluateCampaignsForCustomer(customerUid: string, trigger: 'order' | 'schedule' = 'order'): Promise<{
+  matched: number;
+  issued: number;
+  errors: string[];
+}> {
+  const db = getFirestore();
+  const out = { matched: 0, issued: 0, errors: [] as string[] };
+  try {
+    const custSnap = await db.doc(`customers/${customerUid}`).get();
+    if (!custSnap.exists) return out;
+    // Fetch every campaign — small collection, no index needed.
+    const campSnap = await db.collection('settings/campaigns').get();
+
+    for (const doc of campSnap.docs) {
+      const c = doc.data() as CampaignDoc;
+      if (!isCampaignActive(c)) continue;
+
+      // Trigger gate — inactivity-based campaigns only fire from the
+      // scheduled runner, not on every order. Everything else fires on
+      // both triggers so a well-timed order can immediately unlock a
+      // "welcome back" reward.
+      const inactivityCampaign = !!(c.segmentId && await isInactivitySegment(db, c.segmentId));
+      if (trigger === 'order' && inactivityCampaign) continue;
+
+      // Audience check
+      let inAudience = false;
+      if (!c.segmentId) {
+        inAudience = true; // broadcast
+      } else {
+        const sSnap = await db.doc(`settings/segments/${c.segmentId}`).get();
+        if (!sSnap.exists) continue;
+        const seg = sSnap.data() as SegmentDoc;
+        const uids = await evaluateSegment(seg);
+        inAudience = uids.indexOf(customerUid) >= 0;
+      }
+      if (!inAudience) continue;
+
+      out.matched++;
+      const r = await issueCampaignRewardTo(c.id, customerUid);
+      if (r.ok) out.issued++;
+      else if (r.error && r.error !== 'per-customer-limit') out.errors.push(`${c.id}:${r.error}`);
+    }
+  } catch (err: any) {
+    out.errors.push('eval-failure:' + (err?.message || String(err)));
+  }
+  return out;
+}
+
+async function isInactivitySegment(db: any, segmentId: string): Promise<boolean> {
+  try {
+    const s = await db.doc(`settings/segments/${segmentId}`).get();
+    if (!s.exists) return false;
+    const r = (s.data() as any)?.rules || {};
+    return typeof r.inactiveDays === 'number' && r.inactiveDays > 0;
+  } catch { return false; }
+}

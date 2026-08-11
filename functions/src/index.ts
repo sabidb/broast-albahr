@@ -27,6 +27,7 @@
  */
 
 import { onCall, HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { initializeApp } from 'firebase-admin/app';
@@ -60,7 +61,7 @@ import {
   DEFAULT_REFERRAL_CONFIG, type ReferralConfigDoc,
 } from './referrals.js';
 import {
-  evaluateSegment, issueCampaignToAudience,
+  evaluateSegment, issueCampaignToAudience, evaluateCampaignsForCustomer,
   type SegmentDoc, type CampaignDoc,
 } from './campaigns.js';
 
@@ -651,6 +652,28 @@ async function submitOrderImpl(req: CallableRequest<SubmitOrderData>) {
     });
   } catch (err: any) {
     try { console.warn('[submitOrder] referral qualify failed:', err?.message || err); } catch {}
+  }
+
+  // Phase 15/16 — evaluate every active campaign against this customer.
+  // Non-inactivity campaigns fire immediately (e.g. "new customer welcome
+  // reward" hits on the first order). Silent on failure — a campaign
+  // eval error must NEVER break the order pipeline.
+  try {
+    const campaignRes = await evaluateCampaignsForCustomer(uid, 'order');
+    if (campaignRes.issued > 0) {
+      try {
+        await dispatchNotification({
+          phone: userPhone,
+          templateName: 'campaign.available' as TemplateName,
+          ctx: { count: String(campaignRes.issued) },
+          orderNo,
+          dedupKey: `campaign.issued:${clientOrderId}`,
+          meta: { source: 'submitOrder', issued: campaignRes.issued },
+        });
+      } catch { /* notification is best-effort */ }
+    }
+  } catch (err: any) {
+    try { console.warn('[submitOrder] campaign eval failed:', err?.message || err); } catch {}
   }
 
   return {
@@ -1632,3 +1655,45 @@ export const issueCampaignNow = onCall<IssueCampaignNowData>({ secrets: [REWARD_
   const summary = await issueCampaignToAudience(id, uids);
   return { ok: true, audience: uids.length, ...summary };
 });
+
+/**
+ * Phase 15/16 — scheduled runner for inactivity-based campaigns.
+ * Runs once a day at 07:00 Riyadh time (04:00 UTC). Iterates active
+ * campaigns whose segments are inactivity-based, resolves the audience,
+ * and issues rewards. Non-inactivity campaigns skip this pass because
+ * they already fire on submitOrder — running them here would just spam
+ * duplicate "per-customer-limit" no-ops.
+ */
+export const runScheduledCampaigns = onSchedule(
+  { schedule: '0 4 * * *', timeZone: 'UTC', secrets: [REWARD_TOKEN_SIGNING_KEY] },
+  async () => {
+    const db = getFirestore();
+    const campSnap = await db.collection('settings/campaigns').get();
+    let totalIssued = 0, totalMatched = 0;
+    for (const doc of campSnap.docs) {
+      const c = doc.data() as CampaignDoc;
+      if (c.status !== 'active') continue;
+      if (!c.segmentId) continue; // broadcast campaigns run manually — spamming everyone daily would be spammy
+      const segSnap = await db.doc(`settings/segments/${c.segmentId}`).get();
+      if (!segSnap.exists) continue;
+      const seg = segSnap.data() as SegmentDoc;
+      // Only run inactivity-based segments here; other segments already
+      // fire from submitOrder as customers do their thing.
+      if (!(seg.rules?.inactiveDays && seg.rules.inactiveDays > 0)) continue;
+      const uids = await evaluateSegment(seg);
+      totalMatched += uids.length;
+      const summary = await issueCampaignToAudience(c.id, uids);
+      totalIssued += summary.issued;
+      try {
+        await db.collection('campaignEvents').add({
+          at: new Date().toISOString(),
+          action: 'scheduled-run',
+          campaignId: c.id,
+          matched: uids.length,
+          ...summary,
+        });
+      } catch { /* audit best-effort */ }
+    }
+    console.log(`[runScheduledCampaigns] matched=${totalMatched} issued=${totalIssued}`);
+  }
+);
