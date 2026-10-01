@@ -48,6 +48,7 @@ function AppInner() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [restaurantClosed, setRestaurantClosed] = useState(false);
+  const [offers, setOffers] = useState<any[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [tab, setTab] = useState<Tab>('menu');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -112,6 +113,7 @@ function AppInner() {
     let unsubMenu = () => {};
     let unsubSettings = () => {};
     let unsubBranches = () => {};
+    let unsubOffers = () => {};
     (async () => {
       const m = await FB.getMenu();
       if (m) setMenu(m);
@@ -129,11 +131,13 @@ function AppInner() {
       });
       unsubMenu = FB.onMenuChange((mm) => mm && setMenu(mm));
       unsubSettings = FB.onSettingsChange((ss) => setRestaurantClosed(ss.isOpen === false));
+      unsubOffers = FB.onOffersChange((os) => setOffers(os));
     })();
     return () => {
       unsubMenu();
       unsubSettings();
       unsubBranches();
+      unsubOffers();
     };
   }, []);
 
@@ -510,7 +514,7 @@ function AppInner() {
       <AnimatePresence mode="wait">
         <motion.div key={tab} variants={pageVariants} initial="initial" animate="animate" exit="exit">
           {tab === 'menu' && (
-            <MenuStep menu={menuForBranch} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} />
+            <MenuStep menu={menuForBranch} cart={cart} setCart={setCart} user={user} isAr={isAr} restaurantClosed={restaurantClosed} offers={offers} />
           )}
           {tab === 'rewards' && <RewardsScreen loyalty={loyalty} streak={streak} isAr={isAr} uid={user?.uid} onRedeem={onRedeem} />}
           {tab === 'orders' && (

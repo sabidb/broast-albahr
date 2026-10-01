@@ -4,6 +4,7 @@ import MenuCard from './MenuCard';
 import ItemDetail from './ItemDetail';
 import ItemImage from './ItemImage';
 import FoodIcon from './FoodIcon';
+import OffersStrip, { type Offer } from './OffersStrip';
 import { stagger, item as itemVar } from './motion';
 import { detectKind } from '../lib/items';
 import { money } from '../lib/utils';
@@ -18,11 +19,12 @@ interface Props {
   user: { name: string; phone: string };
   isAr: boolean;
   restaurantClosed: boolean;
+  offers?: Offer[];
 }
 
 const stripEmoji = (s: string) => s.replace(/^[^A-Za-z؀-ۿ]+/, '').trim();
 
-export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantClosed }: Props) {
+export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantClosed, offers = [] }: Props) {
   const cats = Object.keys(menu);
   const [active, setActive] = useState(cats[0]);
   const [query, setQuery] = useState('');
@@ -94,6 +96,9 @@ export default function MenuStep({ menu, cart, setCart, user, isAr, restaurantCl
           ⛔ {isAr ? 'المطعم مغلق حالياً' : 'Restaurant is currently closed'}
         </div>
       )}
+
+      {/* live promo offers from the admin Offers tab (settings/offers) */}
+      {!q && <OffersStrip offers={offers} isAr={isAr} />}
 
       {/* featured — scroll-snap carousel */}
       {!q && (

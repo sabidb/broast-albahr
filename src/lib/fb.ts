@@ -796,6 +796,33 @@ export const FB = {
     }
   },
 
+  /**
+   * Live customer-facing promotional offers (settings/offers). The admin
+   * "Offers" tab writes an { items: [{ badge, title, titleAr, sub, subAr,
+   * expiresAt, active }] } bag; this streams the active, non-expired cards so
+   * the menu screen can show them. Returns unsubscribe.
+   */
+  onOffersChange(cb: (offers: any[]) => void): Unsub {
+    if (!db) return noop;
+    try {
+      return onSnapshot(doc(db, 'settings', 'offers'), (s) => {
+        const items: any[] = s.exists() ? ((s.data() as any).items || []) : [];
+        const now = Date.now();
+        const live = items.filter((o) => {
+          if (o && o.active === false) return false;
+          if (o && o.expiresAt) {
+            const t = new Date(o.expiresAt).getTime();
+            if (Number.isFinite(t) && t < now) return false;
+          }
+          return true;
+        });
+        cb(live);
+      }, () => cb([]));
+    } catch {
+      return noop;
+    }
+  },
+
   async getAnnouncement() {
     if (!db) return null;
     try {
