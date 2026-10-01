@@ -835,6 +835,41 @@ export const FB = {
     }
   },
 
+  /**
+   * Resolve customer-invoice branding from the admin-managed docs:
+   *   - settings/tenant         → restaurant name (EN/AR)
+   *   - settings/invoiceConfig  → VAT registration number + footer lines
+   *     (stored as { global: {...}, byBranch: {...} } by the admin).
+   * Every field falls back to the previous hardcoded value so an invoice
+   * still renders correctly when the docs are missing. Fetched once per
+   * invoice open (not reactive — an invoice is an immutable snapshot).
+   */
+  async getBranding(): Promise<{ restaurantName: string; restaurantNameAr: string; vatRegNo: string; footerLines: string[] }> {
+    const fallback = { restaurantName: 'Broast Al Bahr', restaurantNameAr: 'بروست البحر', vatRegNo: '311459656500003', footerLines: [] as string[] };
+    if (!db) return fallback;
+    try {
+      const [tSnap, iSnap] = await Promise.all([
+        getDoc(doc(db, 'settings', 'tenant')),
+        getDoc(doc(db, 'settings', 'invoiceConfig')),
+      ]);
+      const tenant: any = tSnap.exists() ? tSnap.data() : {};
+      const invCfg: any = iSnap.exists() ? iSnap.data() : {};
+      const g: any = invCfg.global || invCfg || {};
+      const footerLines = [g.footerLine1, g.footerLine2, g.footerLine3]
+        .map((s) => (s == null ? '' : String(s).trim()))
+        .filter((s) => s.length > 0);
+      const vat = g.showVatNumber !== false && g.vatNumber ? String(g.vatNumber).trim() : '';
+      return {
+        restaurantName: String(tenant.name || g.header || fallback.restaurantName),
+        restaurantNameAr: String(tenant.nameAr || fallback.restaurantNameAr),
+        vatRegNo: vat || fallback.vatRegNo,
+        footerLines,
+      };
+    } catch {
+      return fallback;
+    }
+  },
+
   async getAnnouncement() {
     if (!db) return null;
     try {

@@ -40,10 +40,20 @@ export interface InvoiceTotals {
   refundReason: string | null;
 }
 
+/** Admin-managed branding injected into the invoice (settings/tenant + settings/invoiceConfig). */
+export interface InvoiceBranding {
+  restaurantName?: string;
+  restaurantNameAr?: string;
+  vatRegNo?: string;
+  footerLines?: string[];
+}
+
 export interface InvoiceModel {
   orderNo: string;
   dateFmt: string;
   restaurantName: string;
+  restaurantNameAr: string;
+  footerLines: string[];
   branchName: string;
   branchNameAr: string | null;
   branchPhone: string | null;
@@ -84,7 +94,7 @@ function derivePaymentStatus(order: Order): InvoiceModel['paymentStatus'] {
   return 'pending';
 }
 
-export function buildInvoiceModel(order: Order): InvoiceModel {
+export function buildInvoiceModel(order: Order, branding?: InvoiceBranding): InvoiceModel {
   const anyOrder = order as any;
   const orderType = (order.orderType || 'pickup') as 'pickup' | 'delivery';
 
@@ -120,7 +130,9 @@ export function buildInvoiceModel(order: Order): InvoiceModel {
   return {
     orderNo: order.orderNo,
     dateFmt: formatDate(order.date),
-    restaurantName: 'Broast Al Bahr',
+    restaurantName: branding?.restaurantName || 'Broast Al Bahr',
+    restaurantNameAr: branding?.restaurantNameAr || 'بروست البحر',
+    footerLines: branding?.footerLines || [],
     branchName: order.branchObj?.nameEn || '',
     branchNameAr: (order.branchObj as any)?.nameAr || null,
     branchPhone: (order.branchObj as any)?.phone || null,
@@ -143,7 +155,7 @@ export function buildInvoiceModel(order: Order): InvoiceModel {
       refundedFmt: refundedAmount > 0 ? fmtMoney(refundedAmount) : null,
       refundReason: refundBlock ? (refundBlock.reason || null) : null,
     },
-    vatRegNo: VAT_REG_NO,
+    vatRegNo: branding?.vatRegNo || VAT_REG_NO,
     showAppSavingsBlock: appSavings > 0 || lines.some((l) => l.hasSaving),
     // Phase 11 stamps a reward block onto the order when one applies. Until
     // then the customer app has nothing to render here — keep it null so

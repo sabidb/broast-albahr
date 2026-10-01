@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { formatDate } from '../lib/utils';
+import { FB } from '../lib/fb';
 import type { MenuItem } from '../lib/data';
-import { buildInvoiceModel, type InvoiceModel } from '../lib/invoice';
+import { buildInvoiceModel, type InvoiceBranding, type InvoiceModel } from '../lib/invoice';
 
 const INVOICE_TERMS: { en: string; ar: string }[] = [
   {
@@ -68,7 +70,15 @@ const PAYMENT_STATUS_META: Record<InvoiceModel['paymentStatus'], { en: string; a
 };
 
 export default function Invoice({ order, onClose, isAr }: { order: Order; onClose: () => void; isAr: boolean }) {
-  const model = buildInvoiceModel(order);
+  // Live admin branding (restaurant name, VAT reg no., footer lines). Fetched
+  // once; falls back to baked-in defaults until it resolves.
+  const [branding, setBranding] = useState<InvoiceBranding | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    FB.getBranding().then((b) => { if (alive) setBranding(b); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const model = buildInvoiceModel(order, branding);
   const payStatus = PAYMENT_STATUS_META[model.paymentStatus];
 
   const print = () => {
@@ -103,7 +113,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       .row.total{font-size:17px;font-weight:900;border-top:2px solid #000;padding-top:8px;margin-top:8px}
       .footer{text-align:center;margin-top:16px;font-size:11px;color:#999}
       .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}</style>
-      <div class="center logo"><h2>${model.restaurantName.toUpperCase()} · بروست البحر</h2><p>${model.branchName}${model.branchPhone ? ' · ' + model.branchPhone : ''}</p></div>
+      <div class="center logo"><h2>${model.restaurantName.toUpperCase()} · ${model.restaurantNameAr}</h2><p>${model.branchName}${model.branchPhone ? ' · ' + model.branchPhone : ''}</p></div>
       <div class="center"><div style="font-size:11px;color:#999">ORDER</div>
         <div style="font-size:20px;font-weight:900">#${model.orderNo}</div>
         <div style="font-size:11px;color:#666">${model.dateFmt}</div>
@@ -124,7 +134,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
       ${rewardRow}
       <div class="footer">
         <p style="font-size:10px;color:#999">Prices include 15% VAT (${model.totals.vatFmt})</p>
-        <p>شكراً لزيارتكم · Thank you!</p>
+        ${model.footerLines.length ? model.footerLines.map((f) => `<p>${f}</p>`).join('') : '<p>شكراً لزيارتكم · Thank you!</p>'}
         <p style="font-size:10px">VAT Reg. No: ${model.vatRegNo}</p>
       </div>`;
     w.document.title = `Invoice ${model.orderNo}`;
@@ -149,7 +159,7 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
           <div className="font-display text-lg font-extrabold tracking-tight text-white">
             {model.restaurantName.toUpperCase()}
           </div>
-          <div className="mt-0.5 font-arabic text-[13px] text-white/90">بروست البحر</div>
+          <div className="mt-0.5 font-arabic text-[13px] text-white/90">{model.restaurantNameAr}</div>
           <div className="mt-1 text-[11px] text-white/75">
             {model.branchName}{model.branchPhone ? ' · ' + model.branchPhone : ''}
           </div>
@@ -277,6 +287,14 @@ export default function Invoice({ order, onClose, isAr }: { order: Order; onClos
               <span className="font-arabic">بتقديم طلبك فإنك توافق على جميع الشروط أعلاه</span>
             </div>
           </div>
+
+          {model.footerLines.length > 0 && (
+            <div className="mt-4 space-y-0.5 text-center text-[10px] font-semibold text-gray-500">
+              {model.footerLines.map((f, i) => (
+                <div key={i}>{f}</div>
+              ))}
+            </div>
+          )}
 
           <div className="mt-4 text-center text-[9px] font-semibold text-gray-400">
             VAT Reg. No: {model.vatRegNo}
