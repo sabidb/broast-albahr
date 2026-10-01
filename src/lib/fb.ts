@@ -749,6 +749,53 @@ export const FB = {
     }
   },
 
+  /**
+   * Resolve a coupon code against the same sources the `submitOrder` Cloud
+   * Function uses, so the checkout preview can never disagree with the price
+   * the server actually charges. Mirrors functions/src/index.ts: first the
+   * legacy `coupons/{code}` doc, then the admin's `settings/coupons` items
+   * array. Returns a { discount, type, label } shape or null when the code
+   * is unknown / inactive / non-positive. Codes are matched upper-cased.
+   */
+  async lookupCoupon(rawCode: string): Promise<{ discount: number; type: 'percent' | 'fixed'; label: string } | null> {
+    if (!db) return null;
+    const code = String(rawCode || '').trim().toUpperCase();
+    if (!code) return null;
+    const build = (value: number, type: 'percent' | 'fixed') => {
+      if (!Number.isFinite(value) || value <= 0) return null;
+      const label = type === 'percent' ? `${value}% off` : `SR ${value} off`;
+      return { discount: value, type, label };
+    };
+    try {
+      // 1) Legacy per-code doc: coupons/{CODE}
+      const cSnap = await getDoc(doc(db, 'coupons', code));
+      if (cSnap.exists()) {
+        const c = cSnap.data() as any;
+        if (c.active !== false) {
+          const value = Number(c.value ?? c.discount ?? 0);
+          const type = c.type === 'fixed' ? 'fixed' : 'percent';
+          const hit = build(value, type);
+          if (hit) return hit;
+        }
+      }
+      // 2) Admin-managed bag: settings/coupons { items: [{ code, value, type, active }] }
+      const bagSnap = await getDoc(doc(db, 'settings', 'coupons'));
+      if (bagSnap.exists()) {
+        const arr: any[] = (bagSnap.data() as any).items || [];
+        const match = arr.find((c) => String(c.code || '').toUpperCase() === code);
+        if (match && match.active !== false) {
+          const value = Number(match.value ?? match.discount ?? 0);
+          const type = match.type === 'fixed' ? 'fixed' : 'percent';
+          return build(value, type);
+        }
+      }
+      return null;
+    } catch (err) {
+      try { console.error('[FB.lookupCoupon] read failed', err); } catch {}
+      return null;
+    }
+  },
+
   async getAnnouncement() {
     if (!db) return null;
     try {

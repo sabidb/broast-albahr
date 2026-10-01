@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { VALID_COUPONS, PAYMENT_METHODS, PICKUP_SLOTS, type Branch, type MenuItem } from '../lib/data';
+import { PAYMENT_METHODS, PICKUP_SLOTS, type Coupon, type Branch, type MenuItem } from '../lib/data';
 import { computeTotals, money } from '../lib/utils';
 import { FB } from '../lib/fb';
 import ItemImage from './ItemImage';
@@ -68,8 +68,9 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
   const [note, setNote] = useState('');
   const [pickupTime, setPickupTime] = useState('ASAP');
   const [coupon, setCoupon] = useState('');
-  const [applied, setApplied] = useState<{ code: string; c: (typeof VALID_COUPONS)[string] } | null>(null);
+  const [applied, setApplied] = useState<{ code: string; c: Coupon } | null>(null);
   const [couponMsg, setCouponMsg] = useState('');
+  const [couponChecking, setCouponChecking] = useState(false);
   // Phase 11 — 12-char reward code / QR payload. Validated via callable,
   // reserved when the customer taps Confirm. The reserved code is passed
   // to submitOrder as rewardToken so the server can flip it RESERVED →
@@ -93,11 +94,21 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
     : 0;
   const totals = useMemo(() => computeTotals(items, discount), [cart, discount]);
 
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     const code = coupon.trim().toUpperCase();
-    if (VALID_COUPONS[code]) {
-      setApplied({ code, c: VALID_COUPONS[code] });
-      setCouponMsg(isAr ? `✅ تم تطبيق: ${VALID_COUPONS[code].label}` : `✅ Applied: ${VALID_COUPONS[code].label}`);
+    if (!code) return;
+    setCouponChecking(true);
+    setCouponMsg('');
+    // Validate against the same sources the server uses (settings/coupons +
+    // legacy coupons/{code}) so the previewed discount matches the invoice.
+    const c = await FB.lookupCoupon(code);
+    setCouponChecking(false);
+    if (c) {
+      setApplied({ code, c });
+      const label = c.type === 'percent'
+        ? (isAr ? `خصم ${c.discount}%` : `${c.discount}% off`)
+        : (isAr ? `خصم ${c.discount} ريال` : `SR ${c.discount} off`);
+      setCouponMsg(isAr ? `✅ تم تطبيق: ${label}` : `✅ Applied: ${label}`);
     } else {
       setApplied(null);
       setCouponMsg(isAr ? '❌ رمز غير صالح' : '❌ Invalid coupon');
@@ -315,8 +326,8 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
                 placeholder={isAr ? 'أدخل الرمز' : 'Enter code'}
                 className="flex-1 rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-[13px] font-bold text-brand-ink outline-none focus:border-brand-red"
               />
-              <button onClick={applyCoupon} className="rounded-2xl bg-brand-red px-5 text-[13px] font-black text-white shadow-red">
-                {isAr ? 'تطبيق' : 'Apply'}
+              <button onClick={applyCoupon} disabled={couponChecking} className="rounded-2xl bg-brand-red px-5 text-[13px] font-black text-white shadow-red disabled:opacity-60">
+                {couponChecking ? (isAr ? '...' : '…') : (isAr ? 'تطبيق' : 'Apply')}
               </button>
             </div>
           )}
