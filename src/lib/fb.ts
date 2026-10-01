@@ -112,6 +112,18 @@ export interface AuthUser {
   uid: string;
 }
 
+/** settings/restaurant — the customer-relevant subset of what the admin writes. */
+export interface RestaurantSettings {
+  isOpen: boolean;
+  maintenanceMode?: boolean;
+  minOrderAmount?: number;
+  deliveryFee?: number;
+  deliveryEnabled?: boolean;
+  pickupEnabled?: boolean;
+  estimatedPickup?: number;
+  estimatedDelivery?: number;
+}
+
 function shape(u: FbUser | null): AuthUser | null {
   if (!u) return null;
   return { uid: u.uid };
@@ -181,11 +193,11 @@ export const FB = {
     return getDownloadURL(r);
   },
 
-  async getSettings(): Promise<{ isOpen: boolean }> {
+  async getSettings(): Promise<RestaurantSettings> {
     if (!db) return { isOpen: true };
     try {
       const s = await getDoc(doc(db, 'settings', 'restaurant'));
-      return s.exists() ? (s.data() as { isOpen: boolean }) : { isOpen: true };
+      return s.exists() ? (s.data() as RestaurantSettings) : { isOpen: true };
     } catch {
       return { isOpen: true };
     }
@@ -642,11 +654,11 @@ export const FB = {
     } catch {}
   },
 
-  onSettingsChange(cb: (s: { isOpen: boolean }) => void): Unsub {
+  onSettingsChange(cb: (s: RestaurantSettings) => void): Unsub {
     if (!db) return noop;
     try {
       return onSnapshot(doc(db, 'settings', 'restaurant'), (s) => {
-        if (s.exists()) cb(s.data() as { isOpen: boolean });
+        if (s.exists()) cb(s.data() as RestaurantSettings);
       });
     } catch {
       return noop;

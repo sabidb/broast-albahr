@@ -23,7 +23,7 @@ import { pageVariants } from './motion';
 import { money, APP_VERSION } from '../lib/utils';
 import { DEFAULT_MENU, BRANCHES, type Branch, type Menu } from '../lib/data';
 import { filterMenuForBranch } from '../lib/items';
-import { FB } from '../lib/fb';
+import { FB, type RestaurantSettings } from '../lib/fb';
 import { tickStreak, loadStreak, type StreakState, type StreakTick } from '../lib/streak';
 import {
   loadLoyalty,
@@ -48,6 +48,7 @@ function AppInner() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [restaurantClosed, setRestaurantClosed] = useState(false);
+  const [settings, setSettings] = useState<RestaurantSettings>({ isOpen: true });
   const [offers, setOffers] = useState<any[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [tab, setTab] = useState<Tab>('menu');
@@ -118,7 +119,7 @@ function AppInner() {
       const m = await FB.getMenu();
       if (m) setMenu(m);
       const s = await FB.getSettings();
-      if (s && s.isOpen === false) setRestaurantClosed(true);
+      if (s) { setSettings(s); if (s.isOpen === false) setRestaurantClosed(true); }
       // Live branches from Firestore. Fall back to hardcoded BRANCHES when the collection is empty.
       const seedBranches = await FB.getBranches();
       if (seedBranches.length) setBranches(seedBranches);
@@ -130,7 +131,7 @@ function AppInner() {
         if (visible.length) setBranches(visible);
       });
       unsubMenu = FB.onMenuChange((mm) => mm && setMenu(mm));
-      unsubSettings = FB.onSettingsChange((ss) => setRestaurantClosed(ss.isOpen === false));
+      unsubSettings = FB.onSettingsChange((ss) => { setSettings(ss); setRestaurantClosed(ss.isOpen === false); });
       unsubOffers = FB.onOffersChange((os) => setOffers(os));
     })();
     return () => {
@@ -435,6 +436,22 @@ function AppInner() {
     );
   }
 
+  if (settings.maintenanceMode === true) {
+    return (
+      <div className="ambient flex min-h-screen flex-col items-center justify-center px-8 text-center" dir={isAr ? 'rtl' : 'ltr'}>
+        <div className="text-6xl">🛠️</div>
+        <h1 className="mt-5 text-[22px] font-black text-brand-ink">
+          {isAr ? 'التطبيق تحت الصيانة' : "We'll be right back"}
+        </h1>
+        <p className="mt-2 max-w-xs text-[14px] font-bold text-brand-muted">
+          {isAr
+            ? 'نقوم ببعض التحديثات حالياً. يرجى المحاولة بعد قليل.'
+            : "We're making a few updates. Please check back shortly."}
+        </p>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="ambient min-h-screen" dir={isAr ? 'rtl' : 'ltr'}>
@@ -630,6 +647,8 @@ function AppInner() {
               isAr={isAr}
               defaultBranchId={branchId}
               branches={branches}
+              minOrderAmount={settings.minOrderAmount}
+              estimatedPickup={settings.estimatedPickup}
               onBack={() => setCheckoutOpen(false)}
               onOrderPlaced={onOrderPlaced}
             />

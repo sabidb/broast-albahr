@@ -26,9 +26,11 @@ interface Props {
   isAr: boolean;
   defaultBranchId?: string | null;
   branches: Branch[];
+  minOrderAmount?: number;
+  estimatedPickup?: number;
 }
 
-export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlaced, isAr, defaultBranchId, branches }: Props) {
+export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlaced, isAr, defaultBranchId, branches, minOrderAmount, estimatedPickup }: Props) {
   const items = Object.values(cart) as MenuItem[];
 
   // Live edits to the cart from within checkout. Qty 0 removes the row so
@@ -94,6 +96,12 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
     : 0;
   const totals = useMemo(() => computeTotals(items, discount), [cart, discount]);
 
+  // Admin-set minimum order amount (settings/restaurant.minOrderAmount),
+  // compared against the food subtotal (pre-VAT). Only enforced when the admin
+  // configured a positive value; 0 / unset means no minimum.
+  const minOrder = typeof minOrderAmount === 'number' && minOrderAmount > 0 ? minOrderAmount : 0;
+  const belowMin = minOrder > 0 && items.length > 0 && totals.subtotal < minOrder;
+
   const applyCoupon = async () => {
     const code = coupon.trim().toUpperCase();
     if (!code) return;
@@ -156,6 +164,13 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
 
   const placeOrder = async () => {
     if (!branch) return alert(isAr ? 'اختر الفرع' : 'Please select a branch');
+    if (belowMin) {
+      return alert(
+        isAr
+          ? `الحد الأدنى للطلب ${money(minOrder)}`
+          : `Minimum order is ${money(minOrder)}`,
+      );
+    }
     // Reserve the reward token to this order before we submit. If the
     // reservation fails now, we don't send the token to the server — the
     // customer still gets to place the order and the token stays AVAILABLE
@@ -249,6 +264,11 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
 
         <Section>
           <span className={label}>⏰ {isAr ? 'وقت الاستلام' : 'PICKUP TIME'}</span>
+          {typeof estimatedPickup === 'number' && estimatedPickup > 0 && (
+            <div className="mb-2 text-[12px] font-bold text-brand-muted">
+              {isAr ? `عادةً جاهز خلال ~${estimatedPickup} دقيقة` : `Usually ready in ~${estimatedPickup} min`}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {PICKUP_SLOTS.map((s) => {
               const on = pickupTime === s;
@@ -510,13 +530,16 @@ export default function CheckoutStep({ cart, setCart, user, onBack, onOrderPlace
             </span>
           </div>
           <motion.button
-            whileHover={{ y: -2 }}
-            whileTap={{ scale: 0.97 }}
+            whileHover={belowMin ? undefined : { y: -2 }}
+            whileTap={belowMin ? undefined : { scale: 0.97 }}
             onClick={placeOrder}
-            className="sheen flex-1 rounded-2xl py-4 text-[15px] font-black text-white shadow-red"
-            style={{ background: 'linear-gradient(135deg,#11845B,#0c6b49)' }}
+            disabled={belowMin}
+            className="sheen flex-1 rounded-2xl py-4 text-[14px] font-black text-white shadow-red disabled:opacity-60 disabled:shadow-none"
+            style={{ background: belowMin ? '#9CA3AF' : 'linear-gradient(135deg,#11845B,#0c6b49)' }}
           >
-            {isAr ? '✅ تأكيد الطلب' : '✅ Confirm Order'}
+            {belowMin
+              ? (isAr ? `الحد الأدنى ${money(minOrder)}` : `Min order ${money(minOrder)}`)
+              : (isAr ? '✅ تأكيد الطلب' : '✅ Confirm Order')}
           </motion.button>
         </div>
       )}
